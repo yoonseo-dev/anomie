@@ -1,0 +1,14 @@
+node_modules
+dist/
+build/
+coverage/
+
+# Keep environment variables out of version control
+.env
+*.env.*
+docker-compose.override.yml
+
+/generated/prisma
+
+npm-debug.log*
+yarn-error.log*
