@@ -4,13 +4,11 @@
 // Get a free hosted Postgres database in seconds: `npx create-db`
 
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
 }
 
 model User {
@@ -32,7 +30,7 @@ model Article {
   content String
   publishedAt DateTime
   createdAt DateTime @default(now())
-  
+
   userId String
   user User @relation(fields: [userId], references: [id])
 
@@ -44,7 +42,7 @@ model Tag{
   name String
   description String
   createdAt DateTime @default(now())
-  
+
   articleTags ArticleTag[]
 }
 
