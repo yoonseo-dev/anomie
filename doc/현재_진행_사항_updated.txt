@@ -1,0 +1,8 @@
+- 기획 변경사항 확정 및 plan 반영 완료 (2026-09-30)
+  - 책 사진 스크랩 경로, 개념 간 관계(지식 그래프), 태그 제안→승인 플로우, 사용자별 태그, 태그 중복 방지 전략 확정
+  - 테이블 구조 7개로 변경: USER, TAG, ARTICLE, BOOK_SCRAP, ARTICLE_TAG, BOOK_SCRAP_TAG, CONCEPT_RELATION
+- 개발 환경 완료: docker-compose로 PostgreSQL 컨테이너 기동, server/client 구조, 패키지, prisma init, .env 설정
+- 기획 변경 전 기준으로 구현 완료된 부분 (구 구조): 뉴스 URL → 크롤링 → Claude API 분석 → 응답 수신
+  - 이 파이프라인은 새 기획에서도 URL 경로로 유지되며, 분석/저장 분리 등 일부 수정만 필요
+- prisma.schema는 구 구조(User/Article/Tag/ArticleTag) 기준 → 7개 테이블 구조로 재작성 필요 (필드 설계 대기)
+- 다음 순서: 현재 상태 git 커밋 → 필드 설계 확정 → schema.prisma 재작성 → ERD 갱신
