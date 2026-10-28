@@ -1,7 +1,4 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// Anomie DB 스키마 (10-28 기획 기준, 8개 테이블). 설계 배경은 doc/plan.md 3장.
 
 generator client {
   provider = "prisma-client-js"
@@ -12,47 +9,149 @@ datasource db {
 }
 
 model User {
-  id       String   @id @default(uuid())
+  id        String   @id @default(uuid())
   email     String   @unique
-  password  String
+  password  String // bcrypt 해시
   nickname  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  articles Article[]
+
+  tags       Tag[]
+  articles   Article[]
+  bookScraps BookScrap[]
 }
 
+// 개념 태그. 사용자별로 소유하고, 이름은 사용자 안에서 유일하다.
+model Tag {
+  id              String   @id @default(uuid())
+  userId          String
+  name            String
+  // 분야. 통계용으로만 쓰고 화면에는 보여 주지 않는다. 프롬프트의 고정 목록 중 하나.
+  category        String?
+  description     String? // 개념 설명
+  descriptionByAi Boolean  @default(true) // 사용자가 고치면 false ("직접 씀" 표시)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  articleTags ArticleTag[]
+  bookTags    BookScrapTag[]
+  relationsA  ConceptRelation[] @relation("TagA")
+  relationsB  ConceptRelation[] @relation("TagB")
+
+  @@unique([userId, name])
+}
+
+// 뉴스 스크랩
 model Article {
-  id  String @id @default(uuid())
-  url String
-  title String
-  summary String
-  thumbnailUrl String
-  content String
-  publishedAt DateTime
-  createdAt DateTime @default(now())
+  id           String    @id @default(uuid())
+  userId       String
+  url          String
+  title        String
+  publisher    String?
+  thumbnailUrl String?
+  publishedAt  DateTime? // 크롤링으로 찾지 못하면 비운다
+  content      String // 본문 (5000자 상한)
+  summary      String // 짧은 요약. 관계 제안 때 원문 대신 넘긴다
+  commentary   String?
+  framing      String?
+  rhetoric     String?
+  stakeholders String?
+  values       String?
+  createdAt    DateTime  @default(now())
 
-  userId String
-  user User @relation(fields: [userId], references: [id])
-
+  user        User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
   articleTags ArticleTag[]
+  evidences   ConceptRelationEvidence[]
+
+  @@unique([userId, url]) // 같은 기사 중복 스크랩 방지
+  @@index([userId, createdAt])
 }
 
-model Tag{
-  id String @id @default(uuid())
-  name String
-  description String
+// 책 스크랩. 사진과 OCR 추출 전문은 저장하지 않는다.
+model BookScrap {
+  id        String   @id @default(uuid())
+  userId    String
+  bookTitle String
+  author    String?
+  page      Int? // 사용자가 직접 입력
+  summary   String // 짧은 요약. 관계 제안 때 넘긴다
   createdAt DateTime @default(now())
 
-  articleTags ArticleTag[]
+  user      User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookTags  BookScrapTag[]
+  evidences ConceptRelationEvidence[]
+
+  @@index([userId, createdAt])
 }
 
-model ArticleTag{
-  id String @id @default(uuid())
-  reason String
+model ArticleTag {
+  id          String @id @default(uuid())
+  articleId   String
+  tagId       String
+  reason      String // 태그를 붙인 핵심 근거 (1~2문장)
+  explanation String // 이 기사에서 개념이 어떻게 드러나는지
 
-  articleId String
-  article Article @relation(fields: [articleId], references: [id])
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
-  tagId String
-  tag Tag @relation(fields: [tagId], references: [id])
+  @@unique([articleId, tagId])
+  @@index([tagId])
+}
+
+model BookScrapTag {
+  id          String @id @default(uuid())
+  bookScrapId String
+  tagId       String
+  reason      String
+  explanation String
+  excerpt     String // 근거 문장 1~3문장. OCR 텍스트에 글자 그대로 있는지 확인한 뒤 저장
+
+  bookScrap BookScrap @relation(fields: [bookScrapId], references: [id], onDelete: Cascade)
+  tag       Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([bookScrapId, tagId])
+  @@index([tagId])
+}
+
+enum RelationStatus {
+  SUGGESTED // 제안 (점선)
+  APPROVED // 승인 (실선)
+  REJECTED // 거절. 지우지 않고 남겨 같은 쌍을 다시 제안하지 않는다
+}
+
+// 개념 간 무방향 관계. 서버가 항상 tagAId < tagBId로 정렬해 저장해 A—B / B—A 중복을 막는다.
+model ConceptRelation {
+  id        String         @id @default(uuid())
+  tagAId    String
+  tagBId    String
+  reason    String // 관계 설명 (사용자가 고칠 수 있다)
+  status    RelationStatus @default(SUGGESTED)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  tagA      Tag                       @relation("TagA", fields: [tagAId], references: [id], onDelete: Cascade)
+  tagB      Tag                       @relation("TagB", fields: [tagBId], references: [id], onDelete: Cascade)
+  evidences ConceptRelationEvidence[]
+
+  @@unique([tagAId, tagBId])
+  @@index([tagBId])
+}
+
+// 관계의 근거 스크랩. articleId / bookScrapId 중 정확히 하나만 채운다 (마이그레이션의 CHECK 제약).
+// 스크랩이 지워지면 근거 행도 지워지고, 근거가 0개가 된 관계(거절 제외)는 서버가 같은 트랜잭션에서 지운다.
+model ConceptRelationEvidence {
+  id          String  @id @default(uuid())
+  relationId  String
+  articleId   String?
+  bookScrapId String?
+
+  relation  ConceptRelation @relation(fields: [relationId], references: [id], onDelete: Cascade)
+  article   Article?        @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  bookScrap BookScrap?      @relation(fields: [bookScrapId], references: [id], onDelete: Cascade)
+
+  @@unique([relationId, articleId])
+  @@unique([relationId, bookScrapId])
+  @@index([articleId])
+  @@index([bookScrapId])
 }
