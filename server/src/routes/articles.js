@@ -2,6 +2,7 @@ const { Router } = require('express');
 const authMiddleware = require('../middleware/auth');
 const prisma = require('../prisma');
 const { analyzeArticle, saveArticle, ARTICLE_INCLUDE, MIN_CONTENT_LENGTH, MAX_CONTENT_LENGTH } = require('../services/articleService');
+const { CATEGORIES } = require('../services/claudeService');
 
 const router = Router();
 
@@ -81,7 +82,9 @@ function parseSaveBody(body) {
         tag.tagId = readString(t, 'tagId', { max: 36 }, tagErrors);
       } else {
         tag.name = readString(t, 'name', { max: 50 }, tagErrors);
-        tag.category = readString(t, 'category', { max: 50, optional: true }, tagErrors);
+        const category = readString(t, 'category', { max: 50, optional: true }, tagErrors);
+        // 고정 분야 목록 밖의 값은 "기타"로 저장한다
+        tag.category = category && !CATEGORIES.includes(category) ? '기타' : category;
         tag.description = readString(t, 'description', { max: 3000, optional: true }, tagErrors);
       }
       errors.push(...tagErrors.map((e) => `tags[${i}].${e}`));

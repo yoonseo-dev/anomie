@@ -39,9 +39,15 @@ async function analyzeArticle({ userId, url }) {
     throw httpError(400, '본문이 너무 긴 기사는 지원하지 않습니다.');
   }
 
-  const analysis = await claudeService.analyzeArticleTags(`제목: ${crawled.title}\n\n${crawled.content}`);
-  const tags = analysis.tags ?? [];
-  console.log(`[Claude] tags 개수: ${tags.length}`);
+  const existingTags = await prisma.tag.findMany({
+    where: { userId },
+    select: { id: true, name: true, description: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  const analysis = await claudeService.analyzeArticleTags(
+    `제목: ${crawled.title}\n\n${crawled.content}`,
+    existingTags
+  );
 
   return {
     url,
@@ -50,20 +56,55 @@ async function analyzeArticle({ userId, url }) {
     thumbnailUrl: crawled.thumbnailUrl,
     publishedAt: crawled.publishedAt,
     content: crawled.content,
-    summary: crawled.summary,
+    // 관계 제안 때 원문 대신 넘기는 요약. Claude 요약이 비면 크롤링한 소개 문구를 쓴다
+    summary: analysis.summary || crawled.summary,
     commentary: analysis.commentary ?? null,
     framing: analysis.framing ?? null,
     rhetoric: analysis.rhetoric ?? null,
     stakeholders: analysis.stakeholders ?? null,
     values: analysis.values ?? null,
-    tags: tags.map((t) => ({
-      name: t.name,
-      category: t.category ?? null,
-      description: t.description ?? null,
-      reason: t.reason,
-      explanation: t.explanation ?? '',
-    })),
+    tags: toSuggestedTags(analysis.tags, existingTags),
   };
+}
+
+// Claude의 태그 제안을 승인 화면용으로 바꾼다.
+// 기존 태그면 tagId와 DB의 이름·설명을, 새 태그면 tagId: null과 비슷한 기존 태그 목록을 담는다.
+function toSuggestedTags(tags, existingTags) {
+  const byName = new Map(existingTags.map((t) => [t.name, t]));
+  const seen = new Set();
+  const result = [];
+  let nameMatched = 0;
+
+  for (const t of tags) {
+    let existing = t.existingTag;
+    // 새 이름이라고 했지만 기존 태그와 이름이 완전히 같으면 그 태그로 본다 (재사용 실패로 집계)
+    if (!existing && byName.has(t.name)) {
+      existing = byName.get(t.name);
+      nameMatched++;
+    }
+
+    const key = existing ? existing.id : `new:${t.name}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    result.push({
+      tagId: existing?.id ?? null,
+      name: existing?.name ?? t.name,
+      isNew: !existing,
+      category: t.category,
+      description: existing ? existing.description : t.description,
+      reason: t.reason,
+      explanation: t.explanation,
+      similarExisting: existing ? [] : t.similarExisting.map(({ id, name }) => ({ id, name })),
+    });
+  }
+
+  const reused = result.filter((t) => !t.isNew).length;
+  console.log(
+    `[태그 제안] 기존 태그 ${existingTags.length}개 중 재사용 ${reused}개, 새 태그 ${result.length - reused}개` +
+      (nameMatched ? ` (이름 일치로 보정 ${nameMatched}개)` : '')
+  );
+  return result;
 }
 
 // 승인된 태그를 실제 Tag 행으로 바꾼다. tagId는 본인 태그인지 확인하고, 새 이름은 만든다.
@@ -77,6 +118,13 @@ async function resolveTags(tx, userId, tags) {
   if (owned.length !== new Set(ids).size) {
     throw httpError(400, '존재하지 않거나 내 것이 아닌 태그가 있습니다.');
   }
+
+  const newNames = tags.filter((t) => !t.tagId).map((t) => t.name);
+  const takenNames = await tx.tag.findMany({
+    where: { userId, name: { in: newNames } },
+    select: { name: true },
+  });
+  const created = new Set(newNames).size - takenNames.length;
 
   const resolved = [];
   for (const t of tags) {
@@ -101,6 +149,7 @@ async function resolveTags(tx, userId, tags) {
   if (new Set(resolved.map((r) => r.tagId)).size !== resolved.length) {
     throw httpError(400, '같은 태그가 두 번 들어 있습니다.');
   }
+  if (created > 0) console.log(`[태그 저장] 새 태그 ${created}개 생성`);
   return resolved;
 }
 

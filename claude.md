@@ -64,7 +64,8 @@ flutter build web --release          # 결과물: client/build/web
   관계의 근거 스크랩이 모두 지워지면 관계도 지운다 (거절한 관계는 보존).
   관계는 항상 `tagAId < tagBId`로 저장하고, 근거 행은 기사/책 중 하나만 채운다 (마이그레이션 SQL의 CHECK 제약).
   기사는 분석(`POST /articles/analyze`, 저장 안 함)과 저장(`POST /articles`, 승인한 태그만)이 나뉘었다.
-  아직 Claude가 기존 태그 ID를 고르지 않고 새 이름만 제안한다. 책·관계 API는 없다.
+  analyze는 사용자의 기존 태그를 `T1`… 번호로 Claude에 넘기고, 태그마다 기존 `tagId` 또는 새 이름으로 돌려준다.
+  Claude 응답은 구조화 출력(JSON 스키마)으로 받는다. 책·관계 API는 없다.
 - **클라이언트는 서버와 연결되지 않았다.** `client/lib/shared/data/`의 저장소는 모두
   `Fake...Repository`(메모리 가짜 데이터)다. 실제 연동은 같은 추상 클래스를 구현하는
   dio 버전을 만들어 Provider만 바꾸는 방식으로 한다. (`dio`는 아직 pubspec에 없다.)
