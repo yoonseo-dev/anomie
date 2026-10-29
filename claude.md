@@ -60,9 +60,9 @@ flutter build web --release          # 결과물: client/build/web
 
 ## 현재 상태와 주의점
 
-- **DB는 10-28 기획 기준 8개 테이블로 재설계됐다** (`server/prisma/schema.prisma`). 테이블은
+- **DB는 10-28 기획 기준 8개 테이블 + REFRESH_TOKEN(10-29 보안 보완)이다** (`server/prisma/schema.prisma`). 테이블은
   USER, TAG(+userId, 사용자 안에서 이름 유일), ARTICLE, BOOK_SCRAP,
-  ARTICLE_TAG, BOOK_SCRAP_TAG, CONCEPT_RELATION, CONCEPT_RELATION_EVIDENCE다.
+  ARTICLE_TAG, BOOK_SCRAP_TAG, CONCEPT_RELATION, CONCEPT_RELATION_EVIDENCE, REFRESH_TOKEN(해시만 저장)이다.
   관계의 근거 스크랩이 모두 지워지면 관계도 지운다 (거절한 관계는 보존).
   관계는 항상 `tagAId < tagBId`로 저장하고, 근거 행은 기사/책 중 하나만 채운다 (마이그레이션 SQL의 CHECK 제약).
   기사는 분석(`POST /articles/analyze`, 저장 안 함)과 저장(`POST /articles`, 승인한 태그만)이 나뉘었다.
@@ -76,7 +76,8 @@ flutter build web --release          # 결과물: client/build/web
 - **클라이언트는 서버와 연결되지 않았다.** `client/lib/shared/data/`의 저장소는 모두
   `Fake...Repository`(메모리 가짜 데이터)다. 실제 연동은 같은 추상 클래스를 구현하는
   dio 버전을 만들어 Provider만 바꾸는 방식으로 한다. (`dio`는 아직 pubspec에 없다.)
-- 서버 API: `/auth/signup`, `/auth/login`, `/articles`·`/book-scraps` (GET 목록·상세, POST /analyze, POST, DELETE),
+- 서버 API: `/auth/signup`, `/auth/login`(Access 15분 + Refresh 30일), `/auth/refresh`(Refresh 교체), `/auth/logout`,
+  `/articles`·`/book-scraps` (GET 목록·상세, POST /analyze, POST, DELETE),
   `/concepts` (GET 목록, GET /graph[?center=], GET /graph/preview, GET·PATCH·DELETE /:id, POST /:id/merge),
   `/relations` (GET 목록[?status=], GET·PATCH /:id). 목록은 `doc/plan.md` 5장.
 - 분석 모델은 `server/src/services/claudeService.js`에, OCR 호출은 `server/src/services/ocrService.js`에 있다.
@@ -92,7 +93,9 @@ flutter build web --release          # 결과물: client/build/web
   가끔 Console 잔액으로 다시 `--set`한다. 테스트(node --test)에서는 기록하지 않는다 (`CREDIT_LOG_DIR`를 주면 기록).
 - **`server/scripts/cleanup.js`는 DB의 모든 데이터를 지운다.** 사용자가 요청할 때만 실행한다.
 - 비밀값은 `server/.env`(DATABASE_URL, JWT_SECRET, ANTHROPIC_API_KEY, GOOGLE_VISION_API_KEY)에 있다.
-  읽거나 출력하지 않는다.
+  읽거나 출력하지 않는다. 선택 설정: `CORS_ORIGINS`(웹 빌드 출처, 쉼표 구분), `TRUST_PROXY`(배포 시 프록시 뒤라면).
+- **분석 호출은 사용자별 시간당 20회·하루 60회로 제한된다** (`middleware/rateLimit.js`, 기사+책 합산, 메모리 저장).
+  로그인은 IP별 실패 10회/15분. 500 오류 메시지는 응답에서 숨기고 로그에만 남긴다.
 
 ## 서버 규칙
 

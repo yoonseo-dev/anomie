@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const multer = require('multer');
 const authMiddleware = require('../middleware/auth');
+const { analyzeLimit } = require('../middleware/rateLimit');
 const prisma = require('../prisma');
 const { analyzeBookPage, saveBookScrap, deleteBookScrap, BOOK_SCRAP_INCLUDE } = require('../services/bookScrapService');
 const { readString, readInt, readTags } = require('../utils/validate');
@@ -59,7 +60,7 @@ router.get('/', authMiddleware, async (req, res, next) => {
 
 // POST /book-scraps/analyze - 책 페이지 사진 → OCR → Claude 태그·근거 문장 제안. 저장하지 않는다.
 // multipart/form-data: image(JPEG/PNG/WebP), bookTitle, author?, page?
-router.post('/analyze', authMiddleware, uploadImage, async (req, res, next) => {
+router.post('/analyze', authMiddleware, analyzeLimit, uploadImage, async (req, res, next) => {
   try {
     const errors = [];
     const book = readBookFields(req.body ?? {}, errors);

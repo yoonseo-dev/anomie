@@ -9,7 +9,8 @@ function authMiddleware(req, res, next) {
 
   const token = authHeader.split(' ')[1];
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    // 알고리즘을 고정해 다른 방식으로 서명된 토큰을 받지 않는다
+    const payload = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     req.user = payload; // { userId, email }을 이후 핸들러에서 사용 가능
     next();
   } catch {

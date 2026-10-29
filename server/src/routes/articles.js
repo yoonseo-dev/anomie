@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const authMiddleware = require('../middleware/auth');
+const { analyzeLimit } = require('../middleware/rateLimit');
 const prisma = require('../prisma');
 const { analyzeArticle, saveArticle, deleteArticle, ARTICLE_INCLUDE, MIN_CONTENT_LENGTH, MAX_CONTENT_LENGTH } = require('../services/articleService');
 const { readString, readUrl, readTags } = require('../utils/validate');
@@ -63,7 +64,7 @@ router.get('/', authMiddleware, async (req, res, next) => {
 });
 
 // POST /articles/analyze - URL 크롤링 → Claude 태그 제안. 저장하지 않고 결과만 돌려준다.
-router.post('/analyze', authMiddleware, async (req, res, next) => {
+router.post('/analyze', authMiddleware, analyzeLimit, async (req, res, next) => {
   try {
     const errors = [];
     const url = readUrl(req.body ?? {}, errors);

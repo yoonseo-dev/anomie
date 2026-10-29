@@ -1,10 +1,11 @@
 # Anomie ERD
 
-10-28 기획 기준 8개 테이블. 실제 정의는 `server/prisma/schema.prisma`, 설계 배경은 `doc/plan.md` 3장.
+10-28 기획 기준 8개 테이블 + 10-29 보안 보완으로 추가한 REFRESH_TOKEN (9개). 실제 정의는 `server/prisma/schema.prisma`, 설계 배경은 `doc/plan.md` 3장.
 
 ```mermaid
 erDiagram
   USER ||--o{ TAG : "소유"
+  USER ||--o{ REFRESH_TOKEN : "로그인"
   USER ||--o{ ARTICLE : "스크랩"
   USER ||--o{ BOOK_SCRAP : "스크랩"
   ARTICLE ||--o{ ARTICLE_TAG : ""
@@ -23,6 +24,15 @@ erDiagram
     string nickname
     datetime createdAt
     datetime updatedAt
+  }
+  REFRESH_TOKEN {
+    uuid id PK
+    uuid userId FK
+    uuid familyId "한 번의 로그인 (기기별 로그아웃 단위)"
+    string tokenHash UK "SHA-256, 원문은 저장 안 함"
+    datetime expiresAt "30일"
+    datetime revokedAt "nullable, 갱신·로그아웃 시"
+    datetime createdAt
   }
   TAG {
     uuid id PK
