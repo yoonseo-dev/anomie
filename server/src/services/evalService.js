@@ -154,9 +154,38 @@ async function recordAnalysis({ kind, userId, input, source, existingTags, rawTa
   return entry;
 }
 
+// 관계 제안 한 번(1·2단계)의 비용과 결과 수를 server/logs/relations-YYYY-MM.jsonl에 남긴다 (채점 없음)
+async function recordRelationRun({ userId, scrap, stage1, stage2, candidates, created }) {
+  if (!loggingOn()) return null;
+  const s1 = claudeCost(stage1);
+  const s2 = stage2 ? claudeCost(stage2) : 0;
+  const totalUsd = s1 != null && s2 != null ? s1 + s2 : null;
+  const entry = {
+    id: randomUUID(),
+    at: new Date().toISOString(),
+    kind: 'relation',
+    userId,
+    scrap,
+    models: { stage1: stage1.model, stage2: stage2?.model ?? null },
+    tokens: { stage1: tokensOf(stage1), stage2: stage2 ? tokensOf(stage2) : null },
+    candidates,
+    created,
+    cost: {
+      stage1Usd: round(s1, 6),
+      stage2Usd: round(s2, 6),
+      totalUsd: round(totalUsd, 6),
+      totalKrw: totalUsd == null ? null : Math.round(totalUsd * KRW_PER_USD),
+    },
+  };
+  await fs.mkdir(logDir(), { recursive: true });
+  await fs.appendFile(path.join(logDir(), `relations-${entry.at.slice(0, 7)}.jsonl`), JSON.stringify(entry) + '\n');
+  console.log(`[기록] relation | ${entry.cost.totalKrw ?? '?'}원 | 후보 ${candidates} → 제안 ${created}`);
+  return entry;
+}
+
 // 응답을 기다리게 하지 않도록 기다리지 않고 실행한다. 실패는 로그로만 남긴다.
 function recordInBackground(args) {
   recordAnalysis(args).catch((err) => console.error(`[기록] 실패: ${err.message}`));
 }
 
-module.exports = { recordAnalysis, recordInBackground, overallScore, autoMetrics, judgeOn };
+module.exports = { recordAnalysis, recordInBackground, recordRelationRun, overallScore, autoMetrics, judgeOn };

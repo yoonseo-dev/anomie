@@ -1,6 +1,8 @@
 require('dotenv/config');
 // 테스트 중에는 분석 기록·채점을 하지 않는다 (evalService 테스트는 따로 켠다)
 process.env.ANALYSIS_LOG = 'off';
+// 저장 뒤 백그라운드 관계 제안(Claude 호출)도 끈다 (relationSuggest 테스트는 직접 호출한다)
+process.env.RELATION_SUGGEST = 'off';
 const jwt = require('jsonwebtoken');
 const prisma = require('../src/prisma');
 const app = require('../src/app');

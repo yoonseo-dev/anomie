@@ -2,7 +2,7 @@ const { Router } = require('express');
 const multer = require('multer');
 const authMiddleware = require('../middleware/auth');
 const prisma = require('../prisma');
-const { analyzeBookPage, saveBookScrap, BOOK_SCRAP_INCLUDE } = require('../services/bookScrapService');
+const { analyzeBookPage, saveBookScrap, deleteBookScrap, BOOK_SCRAP_INCLUDE } = require('../services/bookScrapService');
 const { readString, readInt, readTags } = require('../utils/validate');
 const imageInfo = require('../utils/imageInfo');
 
@@ -106,22 +106,10 @@ router.get('/:id', authMiddleware, async (req, res, next) => {
   }
 });
 
-// DELETE /book-scraps/:id - 책 스크랩 삭제 (본인 것만, BookScrapTag는 Cascade로 함께 삭제)
+// DELETE /book-scraps/:id - 책 스크랩 삭제 (본인 것만). BookScrapTag와 근거가 사라진 관계(거절 제외)도 함께 삭제
 router.delete('/:id', authMiddleware, async (req, res, next) => {
   try {
-    const bookScrap = await prisma.bookScrap.findUnique({
-      where: { id: req.params.id },
-      select: { userId: true },
-    });
-
-    if (!bookScrap) {
-      return res.status(404).json({ message: '책 스크랩을 찾을 수 없습니다.' });
-    }
-    if (bookScrap.userId !== req.user.userId) {
-      return res.status(403).json({ message: '접근 권한이 없습니다.' });
-    }
-
-    await prisma.bookScrap.delete({ where: { id: req.params.id } });
+    await deleteBookScrap(req.user.userId, req.params.id);
     res.status(204).send();
   } catch (err) {
     next(err);

@@ -67,14 +67,18 @@ flutter build web --release          # 결과물: client/build/web
   관계는 항상 `tagAId < tagBId`로 저장하고, 근거 행은 기사/책 중 하나만 채운다 (마이그레이션 SQL의 CHECK 제약).
   기사는 분석(`POST /articles/analyze`, 저장 안 함)과 저장(`POST /articles`, 승인한 태그만)이 나뉘었다.
   analyze는 사용자의 기존 태그를 `T1`… 번호로 Claude에 넘기고, 태그마다 기존 `tagId` 또는 새 이름으로 돌려준다.
-  Claude 응답은 구조화 출력(JSON 스키마)으로 받는다.
+  Claude 응답은 구조화 출력(JSON 스키마)으로 받고, 번호 필드(`T1`, `S1`…)는 허용 번호를 enum으로 묶는다
+  (묶지 않으면 Claude가 번호 대신 개념 이름을 쓴다).
   책도 같은 구조다: `POST /book-scraps/analyze`(multipart 사진 → Google Cloud Vision OCR → Claude, 저장 안 함),
   `POST /book-scraps`(승인한 태그 + 근거 문장). 근거 문장이 OCR 텍스트에 없으면 `excerptVerified: false`("확인 필요").
-  관계 API는 없다.
+  스크랩을 저장하면 응답 뒤 서버 프로세스 안에서 관계 제안이 2단계로 돈다 (`relationSuggestService`, 이름만 보고 후보 →
+  스크랩 요약·이유·근거 문장으로 근거 확인 → 서버 검증 후 SUGGESTED 저장). 연결 끊기·거절은 삭제가 아니라 REJECTED.
 - **클라이언트는 서버와 연결되지 않았다.** `client/lib/shared/data/`의 저장소는 모두
   `Fake...Repository`(메모리 가짜 데이터)다. 실제 연동은 같은 추상 클래스를 구현하는
   dio 버전을 만들어 Provider만 바꾸는 방식으로 한다. (`dio`는 아직 pubspec에 없다.)
-- 서버 API는 현재 `/auth/signup`, `/auth/login`, `/articles`·`/book-scraps` (GET 목록·상세, POST /analyze, POST, DELETE)뿐이다.
+- 서버 API: `/auth/signup`, `/auth/login`, `/articles`·`/book-scraps` (GET 목록·상세, POST /analyze, POST, DELETE),
+  `/concepts` (GET 목록, GET /graph[?center=], GET /graph/preview, GET·PATCH·DELETE /:id, POST /:id/merge),
+  `/relations` (GET 목록[?status=], GET·PATCH /:id). 목록은 `doc/plan.md` 5장.
 - 분석 모델은 `server/src/services/claudeService.js`에, OCR 호출은 `server/src/services/ocrService.js`에 있다.
 - `sample/`(루트)은 OCR 시험용 책 사진이다. 저작물이므로 커밋하지 않는다 (`.gitignore`).
 - **분석 호출마다 비용·품질이 기록된다** (`services/evalService.js`). 응답 뒤 백그라운드에서 Claude가

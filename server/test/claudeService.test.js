@@ -59,6 +59,46 @@ describe('claudeService.analyzeArticleTags', () => {
     assert.doesNotMatch(params.messages[0].content, /id-anomie/); // 실제 ID는 보내지 않는다
   });
 
+  test('번호 필드는 허용 번호(enum)로 묶어 Claude가 이름을 쓰지 못하게 한다', async () => {
+    const stream = stubClaude(message(output([])));
+    await claudeService.analyzeArticleTags('기사', existingTags);
+    const tagItem = stream.mock.calls[0].arguments[0].output_config.format.schema.properties.tags.items;
+    assert.deepEqual(tagItem.properties.existingTag.anyOf[0].enum, ['T1', 'T2']);
+    assert.deepEqual(tagItem.properties.similarExistingTags.items.enum, ['T1', 'T2']);
+
+    mock.restoreAll();
+    const empty = stubClaude(message(output([])));
+    await claudeService.analyzeArticleTags('기사', []);
+    const emptyItem = empty.mock.calls[0].arguments[0].output_config.format.schema.properties.tags.items;
+    assert.deepEqual(emptyItem.properties.existingTag, { type: 'null' }); // 기존 태그가 없으면 고를 수 없다
+  });
+
+  test('관계 제안 1·2단계도 개념·스크랩 번호를 enum으로 묶는다 (10-29: 이름·오타로 답해 후보가 전부 버려짐)', async () => {
+    const s1 = stubClaude(message({ candidates: [] }));
+    await claudeService.suggestRelationCandidates({
+      tags: [
+        { ref: 'T1', name: '판옵티콘', isNew: false },
+        { ref: 'T2', name: '감시사회', isNew: true },
+      ],
+      excludedPairs: [],
+      max: 8,
+    });
+    const s1Item = s1.mock.calls[0].arguments[0].output_config.format.schema.properties.candidates.items;
+    assert.deepEqual(s1Item.properties.a.enum, ['T1', 'T2']);
+    assert.match(s1.mock.calls[0].arguments[0].messages[0].content, /T2\. 감시사회 ★/);
+
+    mock.restoreAll();
+    const s2 = stubClaude(message({ relations: [] }));
+    await claudeService.confirmRelations({
+      candidates: [{ a: 'T2', b: 'T1', aName: '감시사회', bName: '판옵티콘' }],
+      scraps: [{ ref: 'S1', text: '기사' }, { ref: 'S2', text: '책' }],
+      max: 3,
+    });
+    const s2Item = s2.mock.calls[0].arguments[0].output_config.format.schema.properties.relations.items;
+    assert.deepEqual(s2Item.properties.a.enum, ['T2', 'T1']);
+    assert.deepEqual(s2Item.properties.evidence.items.enum, ['S1', 'S2']);
+  });
+
   test('기존 태그가 없으면 "(없음)"으로 알린다', async () => {
     const stream = stubClaude(message(output([])));
 

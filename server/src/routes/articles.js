@@ -1,7 +1,7 @@
 const { Router } = require('express');
 const authMiddleware = require('../middleware/auth');
 const prisma = require('../prisma');
-const { analyzeArticle, saveArticle, ARTICLE_INCLUDE, MIN_CONTENT_LENGTH, MAX_CONTENT_LENGTH } = require('../services/articleService');
+const { analyzeArticle, saveArticle, deleteArticle, ARTICLE_INCLUDE, MIN_CONTENT_LENGTH, MAX_CONTENT_LENGTH } = require('../services/articleService');
 const { readString, readUrl, readTags } = require('../utils/validate');
 
 const router = Router();
@@ -102,23 +102,10 @@ router.get('/:id', authMiddleware, async (req, res, next) => {
   }
 });
 
-// DELETE /articles/:id - 기사 삭제 (본인 기사만, ArticleTag 함께 삭제)
+// DELETE /articles/:id - 기사 삭제 (본인 기사만). ArticleTag와 근거가 사라진 관계(거절 제외)도 함께 삭제
 router.delete('/:id', authMiddleware, async (req, res, next) => {
   try {
-    const article = await prisma.article.findUnique({
-      where: { id: req.params.id },
-    });
-
-    if (!article) {
-      return res.status(404).json({ message: '기사를 찾을 수 없습니다.' });
-    }
-    if (article.userId !== req.user.userId) {
-      return res.status(403).json({ message: '접근 권한이 없습니다.' });
-    }
-
-    await prisma.articleTag.deleteMany({ where: { articleId: article.id } });
-    await prisma.article.delete({ where: { id: article.id } });
-
+    await deleteArticle(req.user.userId, req.params.id);
     res.status(204).send();
   } catch (err) {
     next(err);

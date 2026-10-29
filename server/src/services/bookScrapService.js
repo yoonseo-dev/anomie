@@ -2,6 +2,9 @@ const prisma = require('../prisma');
 const ocrService = require('./ocrService');
 const claudeService = require('./claudeService');
 const evalService = require('./evalService');
+const relationService = require('./relationService');
+const relationSuggestService = require('./relationSuggestService');
+const httpError = require('../utils/httpError');
 const { findExistingTags, toSuggestedTags, resolveTags } = require('./tagService');
 const { MAX_EXCERPT_LENGTH } = require('../utils/validate');
 
@@ -69,8 +72,9 @@ async function analyzeBookPage({ userId, image, bookTitle, author, page }) {
 
 // 사용자가 승인한 분석 결과를 책 스크랩·태그·BookScrapTag로 한 번에 저장한다.
 // OCR 텍스트는 이미 버렸으므로 근거 문장은 길이만 확인한다 (사용자가 실물 책과 대조해 고쳤을 수 있다).
+// 저장은 바로 끝내고, 관계 제안은 응답 뒤 백그라운드에서 만든다 (doc/plan.md 1-4)
 async function saveBookScrap({ userId, bookScrap, tags }) {
-  return prisma.$transaction(async (tx) => {
+  const saved = await prisma.$transaction(async (tx) => {
     const resolved = await resolveTags(tx, userId, tags);
     return tx.bookScrap.create({
       data: {
@@ -81,6 +85,21 @@ async function saveBookScrap({ userId, bookScrap, tags }) {
       include: BOOK_SCRAP_INCLUDE,
     });
   });
+  relationSuggestService.suggestInBackground(userId, { kind: 'book', id: saved.id });
+  return saved;
 }
 
-module.exports = { analyzeBookPage, saveBookScrap, BOOK_SCRAP_INCLUDE };
+// 책 스크랩 삭제. BookScrapTag·근거 행은 Cascade로 지워지고, 근거가 0개가 된 관계(거절 제외)도 같은 트랜잭션에서 지운다
+async function deleteBookScrap(userId, id) {
+  const bookScrap = await prisma.bookScrap.findUnique({ where: { id }, select: { userId: true } });
+  if (!bookScrap) throw httpError(404, '책 스크랩을 찾을 수 없습니다.');
+  if (bookScrap.userId !== userId) throw httpError(403, '접근 권한이 없습니다.');
+
+  await prisma.$transaction(async (tx) => {
+    const relationIds = await relationService.relationIdsByEvidence(tx, { bookScrapId: id });
+    await tx.bookScrap.delete({ where: { id } });
+    await relationService.removeOrphanRelations(tx, relationIds);
+  });
+}
+
+module.exports = { analyzeBookPage, saveBookScrap, deleteBookScrap, BOOK_SCRAP_INCLUDE };

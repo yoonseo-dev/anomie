@@ -65,22 +65,25 @@ ${tagRules('책 구절')}
 
 const nullableString = { anyOf: [{ type: 'string' }, { type: 'null' }] };
 
-// 태그 하나의 스키마. 책은 근거 문장 구간(excerpts)을 추가로 받는다.
-function tagSchema({ withExcerpt = false } = {}) {
+// 번호 필드는 허용 번호를 enum으로 묶는다. 그러지 않으면 Claude가 번호 대신 개념 이름을 쓰기도 한다 (10-29 실측)
+const refString = (refs) => (refs.length ? { type: 'string', enum: refs } : { type: 'string' });
+
+// 태그 하나의 스키마. refs: 기존 태그 번호 목록. 책은 근거 문장 구간(excerpts)을 추가로 받는다.
+function tagSchema({ refs, withExcerpt = false }) {
   const properties = {
-    existingTag: nullableString,
+    existingTag: refs.length ? { anyOf: [refString(refs), { type: 'null' }] } : { type: 'null' },
     name: { type: 'string' },
     category: { type: 'string', enum: CATEGORIES },
     description: nullableString,
     explanation: { type: 'string' },
     reason: { type: 'string' },
-    similarExistingTags: { type: 'array', items: { type: 'string' } },
+    similarExistingTags: { type: 'array', items: refString(refs) },
     ...(withExcerpt && { excerpts: { type: 'array', items: { type: 'string' } } }),
   };
   return { type: 'object', properties, required: Object.keys(properties), additionalProperties: false };
 }
 
-const ARTICLE_ANALYSIS_SCHEMA = {
+const articleAnalysisSchema = (refs) => ({
   type: 'object',
   properties: {
     summary: { type: 'string' },
@@ -89,21 +92,21 @@ const ARTICLE_ANALYSIS_SCHEMA = {
     rhetoric: nullableString,
     stakeholders: nullableString,
     values: nullableString,
-    tags: { type: 'array', items: tagSchema() },
+    tags: { type: 'array', items: tagSchema({ refs }) },
   },
   required: ['summary', 'commentary', 'framing', 'rhetoric', 'stakeholders', 'values', 'tags'],
   additionalProperties: false,
-};
+});
 
-const BOOK_ANALYSIS_SCHEMA = {
+const bookAnalysisSchema = (refs) => ({
   type: 'object',
   properties: {
     summary: { type: 'string' },
-    tags: { type: 'array', items: tagSchema({ withExcerpt: true }) },
+    tags: { type: 'array', items: tagSchema({ refs, withExcerpt: true }) },
   },
   required: ['summary', 'tags'],
   additionalProperties: false,
-};
+});
 
 // 기존 태그 목록을 "T1. 아노미" 형식으로 만든다. 번호 → 태그 표도 함께 돌려준다.
 function numberTags(existingTags) {
@@ -113,7 +116,7 @@ function numberTags(existingTags) {
     byRef.set(ref, tag);
     return `${ref}. ${tag.name}`;
   });
-  return { byRef, text: lines.length ? lines.join('\n') : '(없음)' };
+  return { byRef, refs: [...byRef.keys()], text: lines.length ? lines.join('\n') : '(없음)' };
 }
 
 // Claude가 고른 번호를 실제 태그로 바꾼다. 목록에 없는 번호는 버린다.
@@ -187,10 +190,10 @@ async function requestJson({ model = MODEL, system, schema, content, what }) {
 // 태그마다 existingTag(기존 태그 객체 또는 null)와 similarExisting(새 태그일 때 비슷한 기존 태그)이 붙는다.
 // usage(토큰 사용량)도 함께 돌려준다.
 async function analyzeArticleTags(articleText, existingTags = []) {
-  const { byRef, text: tagList } = numberTags(existingTags);
+  const { byRef, refs, text: tagList } = numberTags(existingTags);
   const { data: raw, usage } = await requestJson({
     system: ARTICLE_SYSTEM_PROMPT,
-    schema: ARTICLE_ANALYSIS_SCHEMA,
+    schema: articleAnalysisSchema(refs),
     content: `기존 태그:\n${tagList}\n\n다음 뉴스 기사를 분석해주세요:\n\n${articleText}`,
     what: '기사',
   });
@@ -200,11 +203,11 @@ async function analyzeArticleTags(articleText, existingTags = []) {
 // 책 페이지의 OCR 텍스트를 분석해 요약과 태그 제안(근거 문장 구간 excerpts 포함)을 돌려준다.
 // 구간마다 OCR 텍스트에 그대로 있는지는 호출한 쪽에서 확인한다.
 async function analyzeBookPage({ ocrText, bookTitle, author }, existingTags = []) {
-  const { byRef, text: tagList } = numberTags(existingTags);
+  const { byRef, refs, text: tagList } = numberTags(existingTags);
   const book = author ? `『${bookTitle}』 (${author})` : `『${bookTitle}』`;
   const { data: raw, usage } = await requestJson({
     system: BOOK_SYSTEM_PROMPT,
-    schema: BOOK_ANALYSIS_SCHEMA,
+    schema: bookAnalysisSchema(refs),
     content: `기존 태그:\n${tagList}\n\n책: ${book}\n\n다음은 이 책 한 페이지의 OCR 텍스트입니다:\n\n${ocrText}`,
     what: '책 구절',
   });
@@ -267,4 +270,106 @@ ${JSON.stringify(result, null, 2)}
   return { scores: data, usage };
 }
 
-module.exports = { client, analyzeArticleTags, analyzeBookPage, judgeAnalysis, CATEGORIES, SCORE_ITEMS, JUDGE_MODEL };
+// ----- 관계 제안 (2단계, doc/plan.md 1-3·7장) -----
+
+const relationCandidateSchema = (refs) => ({
+  type: 'object',
+  properties: {
+    candidates: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { a: refString(refs), b: refString(refs) },
+        required: ['a', 'b'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['candidates'],
+  additionalProperties: false,
+});
+
+// 1단계 (저렴): 개념 이름만 보고 연결 후보 쌍을 고른다. 근거 확인은 2단계에서 한다.
+// tags: [{ ref, name, isNew }] (isNew: 방금 저장한 스크랩에 붙은 태그), excludedPairs: ["T1|T3", ...] 이미 관계가 있는 쌍
+async function suggestRelationCandidates({ tags, excludedPairs, max }) {
+  const { data, usage } = await requestJson({
+    system: `당신은 사회학·철학 개념 사이의 연결 후보를 고르는 전문가입니다. 사용자가 방금 저장한 스크랩의 개념(★ 표시)과 사용자의 다른 개념 사이에서, 실제 글 속에서 함께 작동했을 가능성이 있는 쌍을 고르세요.
+
+- 각 쌍의 한쪽은 반드시 ★ 개념이다. ★ 개념끼리의 쌍도 된다.
+- 여기서는 후보만 고른다. 다음 단계에서 사용자의 스크랩 내용으로 근거를 확인하므로, 가능성이 있으면 넉넉히 고르되 최대 ${max}쌍.
+- 이름만 비슷하거나 같은 분야라는 이유만으로는 고르지 않는다. 한 현상의 원인·결과·사례·대비처럼 내용으로 이어질 수 있는 쌍을 고른다.
+- a, b에는 개념 이름이 아니라 번호(T1, T2 …)만 쓴다. "제외할 쌍"과 같은 쌍(순서 무관)은 고르지 않는다.`,
+    schema: relationCandidateSchema(tags.map((t) => t.ref)),
+    content: `개념 목록 (★ = 방금 저장한 스크랩의 개념):
+${tags.map((t) => `${t.ref}. ${t.name}${t.isNew ? ' ★' : ''}`).join('\n')}
+
+제외할 쌍:
+${excludedPairs.length ? excludedPairs.join(', ') : '(없음)'}`,
+    what: '관계 후보',
+  });
+  return { candidates: data.candidates, usage };
+}
+
+const relationConfirmSchema = (tagRefs, scrapRefs) => ({
+  type: 'object',
+  properties: {
+    relations: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          a: refString(tagRefs),
+          b: refString(tagRefs),
+          reason: { type: 'string' },
+          evidence: { type: 'array', items: refString(scrapRefs) },
+        },
+        required: ['a', 'b', 'reason', 'evidence'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['relations'],
+  additionalProperties: false,
+});
+
+// 2단계 (상세): 후보 쌍마다 사용자의 스크랩에 근거가 있는지 확인하고, 근거가 있는 쌍만 관계로 제안한다.
+// candidates: [{ a, b, aName, bName }], scraps: [{ ref, text }] (요약·태그 이유·근거 문장을 정리한 글)
+async function confirmRelations({ candidates, scraps, max }) {
+  const { data, usage } = await requestJson({
+    system: `당신은 사용자의 스크랩을 근거로 사회학·철학 개념 사이의 관계를 제안하는 전문가입니다.
+
+관계 제안 기준 (스크랩 근거 필수):
+- 사용자의 스크랩에서 두 개념이 함께 작동한 근거가 있을 때만 제안한다. 한 스크랩 안의 근거도, 서로 다른 스크랩(예: 책의 이론과 뉴스의 현실)에 걸친 근거도 된다.
+- 교과서에서 유명한 짝이라도 이 스크랩들에서 이어지는 내용이 없으면 제안하지 않는다. 학자 이름이나 이론을 지어내지 않는다.
+- 근거가 약하면 제안하지 않는다. 제안이 0개여도 된다. 최대 ${max}개, 근거가 강한 순서로.
+
+필드 작성 기준:
+- a, b: 후보 쌍의 개념 번호 그대로.
+- evidence: 근거가 되는 스크랩 번호(S1, S2 …). 두 개념이 각각 실제로 붙어 있는 스크랩이어야 한다.
+- reason: 두 개념이 어떻게 이어지는지 2~3문장. 근거 스크랩의 구체적인 내용을 각각 언급한다 (예: "『감시와 처벌』의 판옵티콘 설명처럼, 배달 앱이 라이더의 위치를 실시간으로 보는 기사에서 …").
+  사용자에게 그대로 보이는 문장이므로 S1·T1 같은 번호는 쓰지 말고, 책 제목·기사 제목이나 내용으로 가리킨다.`,
+    schema: relationConfirmSchema(
+      [...new Set(candidates.flatMap((c) => [c.a, c.b]))],
+      scraps.map((s) => s.ref)
+    ),
+    content: `후보 쌍:
+${candidates.map((c) => `- ${c.a}(${c.aName}) — ${c.b}(${c.bName})`).join('\n')}
+
+사용자의 스크랩:
+${scraps.map((s) => `[${s.ref}] ${s.text}`).join('\n\n')}`,
+    what: '관계 근거 확인',
+  });
+  return { relations: data.relations, usage };
+}
+
+module.exports = {
+  client,
+  analyzeArticleTags,
+  analyzeBookPage,
+  judgeAnalysis,
+  suggestRelationCandidates,
+  confirmRelations,
+  CATEGORIES,
+  SCORE_ITEMS,
+  JUDGE_MODEL,
+};
