@@ -24,6 +24,7 @@ docker compose up -d                 # 루트에서
 
 # 서버 (server/)
 npm start                            # node index.js, 기본 포트 3000
+npm test                             # node:test. 개발 DB 필요 (임시 사용자를 만들고 끝나면 지운다)
 npx prisma migrate dev --name <이름>  # 스키마 변경 후
 npx prisma generate
 
@@ -62,11 +63,12 @@ flutter build web --release          # 결과물: client/build/web
   ARTICLE_TAG, BOOK_SCRAP_TAG, CONCEPT_RELATION, CONCEPT_RELATION_EVIDENCE다.
   관계의 근거 스크랩이 모두 지워지면 관계도 지운다 (거절한 관계는 보존).
   관계는 항상 `tagAId < tagBId`로 저장하고, 근거 행은 기사/책 중 하나만 채운다 (마이그레이션 SQL의 CHECK 제약).
-  **서버 코드는 아직 옛 흐름이다** (분석 즉시 저장, 이름 일치 태그 재사용). 책·관계 API는 없다.
+  기사는 분석(`POST /articles/analyze`, 저장 안 함)과 저장(`POST /articles`, 승인한 태그만)이 나뉘었다.
+  아직 Claude가 기존 태그 ID를 고르지 않고 새 이름만 제안한다. 책·관계 API는 없다.
 - **클라이언트는 서버와 연결되지 않았다.** `client/lib/shared/data/`의 저장소는 모두
   `Fake...Repository`(메모리 가짜 데이터)다. 실제 연동은 같은 추상 클래스를 구현하는
   dio 버전을 만들어 Provider만 바꾸는 방식으로 한다. (`dio`는 아직 pubspec에 없다.)
-- 서버 API는 현재 `/auth/signup`, `/auth/login`, `/articles` (GET 목록·상세, POST, DELETE)뿐이다.
+- 서버 API는 현재 `/auth/signup`, `/auth/login`, `/articles` (GET 목록·상세, POST /analyze, POST, DELETE)뿐이다.
 - 기사 분석 모델은 `server/src/services/claudeService.js`에 지정돼 있다.
 - **`server/scripts/cleanup.js`는 DB의 모든 데이터를 지운다.** 사용자가 요청할 때만 실행한다.
 - 비밀값은 `server/.env`(DATABASE_URL, JWT_SECRET, ANTHROPIC_API_KEY)에 있다.
@@ -77,7 +79,9 @@ flutter build web --release          # 결과물: client/build/web
 - 라우트(`src/routes/`)는 입력 검증과 응답만 맡고, 로직은 `src/services/`에 둔다.
 - 인증이 필요한 라우트에는 `middleware/auth.js`를 붙인다. `req.user = { userId, email }`.
 - 에러는 `next(err)`로 넘긴다. 응답 키는 `{ message }`로 통일한다.
-  (`POST /articles`에 남아 있는 `{ error }`는 정리 대상)
+  서비스에서는 `src/utils/httpError.js`로 상태 코드를 담아 던진다.
+- 서버 테스트는 `server/test/`에 둔다. 크롤러·Claude는 `mock.method(crawlerService, ...)`로 바꿔
+  실제 호출을 하지 않는다 (그래서 서비스끼리는 구조 분해 없이 모듈 객체로 호출한다).
 - Prisma 7은 내장 드라이버가 없다. 반드시 `src/prisma.js`의 싱글톤(pg 어댑터)을 쓴다.
 - 다른 사용자의 데이터에 접근하지 않도록 조회 조건에 항상 `userId`를 넣는다.
 

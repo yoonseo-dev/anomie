@@ -16,7 +16,7 @@
 5. ✅ `schema.prisma` 재작성 → 개발 DB 초기화 → 마이그레이션 새로 생성 (10-28, `20261028055400_init`)
 6. ✅ ERD 갱신 (10-28, `doc/anomie_erd.md`)
 7. 백엔드 수정
-   1. 스크랩 흐름 분리: 분석(저장 안 함) → 사용자 승인 → 저장
+   1. ✅ 스크랩 흐름 분리: 분석(저장 안 함) → 사용자 승인 → 저장 (10-29, 기사만. `POST /articles/analyze` + `POST /articles`)
    2. 태그 사용자별 전환 + 기존 태그 ID 재사용 방식 적용
    3. 책 스크랩 경로 신설 (사진 → **OCR** → Claude 텍스트 분석 → 근거 문장 서버 검증)
    4. 관계 제안 백그라운드 생성 (스크랩 근거 필수) + 마인드맵 조회/관리 API
@@ -201,6 +201,15 @@
 **현재 구현 (구 구조 기준)**
 - 인증: `POST /auth/signup`, `POST /auth/login` (JWT)
 - 스크랩: `POST /articles`(URL → 크롤링 → Claude 분석 → 저장, 동기), `GET /articles`(페이지네이션 + publisher 필터), `GET /articles/:id`, `DELETE /articles/:id` — 본인 소유 확인 포함
+
+**분석/저장 분리 (10-29 구현, 기사)**
+- `POST /articles/analyze` `{ url }`: 중복 URL 확인(409 + `articleId`) → 크롤링 → Claude 분석 → 결과만 반환 (DB 저장 없음)
+- `POST /articles`: analyze 결과 + 승인한 태그. 태그는 기존 `{ tagId, reason, explanation }` 또는 새 `{ name, category?, description?, reason, explanation? }`
+  - 서버가 다시 검증: URL 형식(http/https), 필드 길이, 본문 100~5000자, 태그 1~10개, `tagId` 본인 소유, 같은 태그 중복
+  - 기사·새 태그·ArticleTag를 한 트랜잭션으로 저장 (중간에 실패하면 아무것도 남지 않음)
+  - 새 이름이 이미 내 태그에 있으면 그 태그를 씀 (사용자 안에서 이름 유일). Claude가 ID로 고르는 방식은 다음 단계
+- 크롤러: `og:site_name` → `publisher`, 발행일을 못 찾으면 `null` (전에는 현재 시각으로 채움)
+- 서버 테스트: `node:test` (`npm test`). 크롤러·Claude는 가짜로 바꾸고, 개발 DB에 임시 사용자를 만들었다 지움
 
 **신규 흐름에 따른 변경 (엔드포인트 구성은 가칭)**
 - 분석과 저장의 분리: "분석해서 결과만 반환"(저장 없음)과 "승인된 태그와 함께 저장". 저장 요청에 클라이언트 보관 분석 결과가 실려 오므로 서버가 태그 ID 소유권, 입력 길이, **책의 경우 근거 문장 검증 결과** 등을 확인

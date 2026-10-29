@@ -21,8 +21,9 @@ async function crawlArticle(url) {
     $('h1').first().text().trim() ||
     '';
 
-  const thumbnailUrl = getMeta('og:image') || '';
+  const thumbnailUrl = getMeta('og:image') || null;
   const summary = getMeta('og:description') || '';
+  const publisher = getMeta('og:site_name') || null;
 
   // 한국 주요 뉴스 사이트 포함 다양한 본문 셀렉터를 순서대로 시도
   const contentSelectors = [
@@ -90,9 +91,10 @@ async function crawlArticle(url) {
     $('time[datetime]').first().attr('datetime') ||
     '';
   const parsedDate = publishedAtStr ? new Date(publishedAtStr) : null;
-  const publishedAt = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate : new Date();
+  // 발행일을 찾지 못하면 비운다 (저장 시각으로 채우지 않는다)
+  const publishedAt = parsedDate && !isNaN(parsedDate.getTime()) ? parsedDate : null;
 
-  return { title, thumbnailUrl, summary, content, publishedAt };
+  return { title, publisher, thumbnailUrl, summary, content, publishedAt };
 }
 
 module.exports = { crawlArticle };
