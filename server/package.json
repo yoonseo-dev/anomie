@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "node --test --test-concurrency=1 test/**/*.test.js"
+    "test": "node --test --test-concurrency=1 test/**/*.test.js",
+    "eval:report": "node scripts/analysisReport.js"
   },
   "keywords": [],
   "author": "",

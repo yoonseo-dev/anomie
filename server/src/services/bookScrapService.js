@@ -1,6 +1,7 @@
 const prisma = require('../prisma');
 const ocrService = require('./ocrService');
 const claudeService = require('./claudeService');
+const evalService = require('./evalService');
 const { findExistingTags, toSuggestedTags, resolveTags } = require('./tagService');
 const { MAX_EXCERPT_LENGTH } = require('../utils/validate');
 
@@ -14,10 +15,21 @@ const BOOK_SCRAP_INCLUDE = {
 // OCR 텍스트의 공백이 원문과 다를 수 있으므로, 근거 문장은 공백을 빼고 글자만 대조한다.
 const compact = (s) => s.normalize('NFC').replace(/\s+/g, '');
 
-// 근거 문장이 OCR 텍스트에 글자 그대로 있는지 확인한다.
-function isExcerptInText(excerpt, ocrText) {
-  const needle = compact(excerpt ?? '');
-  return needle.length > 0 && excerpt.length <= MAX_EXCERPT_LENGTH && compact(ocrText).includes(needle);
+const MAX_EXCERPT_PIECES = 3;
+
+// 떨어진 구간은 말줄임표로 이어 한 문자열로 저장한다 (원문에서 이어진 문장이 아님을 드러낸다)
+const joinExcerpts = (pieces) => pieces.map((p) => p.trim()).filter(Boolean).join(' … ');
+
+// 근거 문장 구간이 모두 OCR 텍스트에 글자 그대로 있는지 확인한다. 구간 수·전체 길이 상한도 지켜야 한다.
+function areExcerptsInText(pieces, ocrText) {
+  const text = compact(ocrText);
+  const needles = (pieces ?? []).map(compact).filter(Boolean);
+  return (
+    needles.length > 0 &&
+    needles.length <= MAX_EXCERPT_PIECES &&
+    joinExcerpts(pieces).length <= MAX_EXCERPT_LENGTH &&
+    needles.every((n) => text.includes(n))
+  );
 }
 
 // 책 페이지 사진을 OCR로 읽고 Claude로 분석해 태그 제안을 돌려준다. DB에는 저장하지 않는다.
@@ -29,14 +41,30 @@ async function analyzeBookPage({ userId, image, bookTitle, author, page }) {
   const existingTags = await findExistingTags(userId);
   const analysis = await claudeService.analyzeBookPage({ ocrText, bookTitle, author }, existingTags);
 
-  const tags = toSuggestedTags(analysis.tags, existingTags).map((t) => ({
+  const withExcerpts = analysis.tags.map(({ excerpts, ...t }) => ({
     ...t,
-    excerptVerified: isExcerptInText(t.excerpt, ocrText),
+    excerpt: joinExcerpts(excerpts),
+    excerptVerified: areExcerptsInText(excerpts, ocrText),
   }));
+  const tags = toSuggestedTags(withExcerpts, existingTags);
   const unverified = tags.filter((t) => !t.excerptVerified).length;
   if (unverified) console.log(`[근거 문장] ${tags.length}개 중 ${unverified}개 확인 필요`);
 
-  return { bookTitle, author, page, summary: analysis.summary, ocrText, tags };
+  const result = { bookTitle, author, page, summary: analysis.summary, ocrText, tags };
+
+  // 비용·품질 기록 (응답 뒤 백그라운드에서 채점). OCR은 사진 한 장 = 1단위
+  evalService.recordInBackground({
+    kind: 'book',
+    userId,
+    input: { bookTitle, author, page },
+    source: ocrText,
+    existingTags,
+    rawTags: analysis.tags,
+    result,
+    usage: analysis.usage,
+    ocrUnits: 1,
+  });
+  return result;
 }
 
 // 사용자가 승인한 분석 결과를 책 스크랩·태그·BookScrapTag로 한 번에 저장한다.
@@ -55,4 +83,4 @@ async function saveBookScrap({ userId, bookScrap, tags }) {
   });
 }
 
-module.exports = { analyzeBookPage, saveBookScrap, isExcerptInText, BOOK_SCRAP_INCLUDE };
+module.exports = { analyzeBookPage, saveBookScrap, BOOK_SCRAP_INCLUDE };

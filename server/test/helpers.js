@@ -1,4 +1,6 @@
 require('dotenv/config');
+// 테스트 중에는 분석 기록·채점을 하지 않는다 (evalService 테스트는 따로 켠다)
+process.env.ANALYSIS_LOG = 'off';
 const jwt = require('jsonwebtoken');
 const prisma = require('../src/prisma');
 const app = require('../src/app');

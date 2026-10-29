@@ -13,14 +13,15 @@ const OCR_TEXT = [
   '는 그들에게 전혀 관심의 대상이 되지 못한다.',
 ].join('\n');
 
-const bookTag = (name, excerpt, overrides = {}) => ({
+// claudeService.analyzeBookPage가 돌려주는 태그. excerpts는 문자열 하나 또는 구간 배열
+const bookTag = (name, excerpts, overrides = {}) => ({
   existingTag: null,
   name,
   category: '사회학',
   description: '설명',
   reason: '근거',
   explanation: '풀이',
-  excerpt,
+  excerpts: [excerpts].flat(),
   similarExisting: [],
   ...overrides,
 });
@@ -108,6 +109,9 @@ describe('책 스크랩: 사진 → OCR → 분석, 승인 후 저장', () => {
       bookTag('솔로몬의 지혜', '우리에게 솔로몬의 지혜가 있고 오디세우스의 책략과 꾀가 있다고 해도'),
       // 지어낸 문장
       bookTag('명성', '사람들은 명성을 갈망한다.'),
+      // 떨어진 문장을 한 구간으로 이어 붙이면 실패 (10-29 실측에서 나온 경우)
+      bookTag('조건부 사랑', '우리에게 솔로몬 … 전혀 관심의 대상이 되지 못한다.'),
+      bookTag('지위', '우리에게 솔로몬 전혀 관심의 대상이 되지 못한다.'),
     ]);
 
     const res = await upload({ bookTitle: '불안' });
@@ -120,8 +124,27 @@ describe('책 스크랩: 사진 → OCR → 분석, 승인 후 저장', () => {
         ['인정', true],
         ['솔로몬의 지혜', false],
         ['명성', false],
+        ['조건부 사랑', false],
+        ['지위', false],
       ]
     );
+  });
+
+  test('떨어진 구간은 따로 대조하고 말줄임표로 이어 돌려준다', async () => {
+    stubBook([
+      bookTag('지위 불안', ['우리에게 솔로몬', '전혀 관심의 대상이 되지 못한다.']),
+      bookTag('인정', ['우리에게 솔로몬', '사람들은 명성을 갈망한다.']), // 한 구간이라도 없으면 실패
+      bookTag('명성', ['우리에게', '솔로몬', '의 지혜가', '있고']), // 구간은 3개까지
+    ]);
+
+    const res = await upload({ bookTitle: '불안' });
+
+    const [joined, oneMissing, tooMany] = res.body.tags;
+    assert.equal(joined.excerpt, '우리에게 솔로몬 … 전혀 관심의 대상이 되지 못한다.');
+    assert.equal(joined.excerptVerified, true);
+    assert.equal(oneMissing.excerptVerified, false);
+    assert.equal(tooMany.excerptVerified, false);
+    assert.equal('excerpts' in joined, false);
   });
 
   test('analyze는 기존 태그를 재사용한다 (기사와 같은 방식)', async () => {

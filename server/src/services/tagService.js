@@ -12,7 +12,7 @@ function findExistingTags(userId) {
 
 // Claude의 태그 제안을 승인 화면용으로 바꾼다.
 // 기존 태그면 tagId와 DB의 이름·설명을, 새 태그면 tagId: null과 비슷한 기존 태그 목록을 담는다.
-// 책 분석의 근거 문장(excerpt)이 있으면 그대로 옮긴다.
+// 책 분석의 근거 문장(excerpt)과 검증 결과(excerptVerified)가 있으면 그대로 옮긴다.
 function toSuggestedTags(tags, existingTags) {
   const byName = new Map(existingTags.map((t) => [t.name, t]));
   const seen = new Set();
@@ -39,7 +39,7 @@ function toSuggestedTags(tags, existingTags) {
       description: existing ? existing.description : t.description,
       reason: t.reason,
       explanation: t.explanation,
-      ...(t.excerpt !== undefined && { excerpt: t.excerpt }),
+      ...(t.excerpt !== undefined && { excerpt: t.excerpt, excerptVerified: t.excerptVerified }),
       similarExisting: existing ? [] : t.similarExisting.map(({ id, name }) => ({ id, name })),
     });
   }

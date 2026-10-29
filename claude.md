@@ -25,6 +25,7 @@ docker compose up -d                 # 루트에서
 # 서버 (server/)
 npm start                            # node index.js, 기본 포트 3000
 npm test                             # node:test. 개발 DB 필요 (임시 사용자를 만들고 끝나면 지운다)
+npm run eval:report                  # 분석 비용·채점 기록 요약 (-- --month 2026-10 --last 20)
 npx prisma migrate dev --name <이름>  # 스키마 변경 후
 npx prisma generate
 
@@ -75,6 +76,11 @@ flutter build web --release          # 결과물: client/build/web
 - 서버 API는 현재 `/auth/signup`, `/auth/login`, `/articles`·`/book-scraps` (GET 목록·상세, POST /analyze, POST, DELETE)뿐이다.
 - 분석 모델은 `server/src/services/claudeService.js`에, OCR 호출은 `server/src/services/ocrService.js`에 있다.
 - `sample/`(루트)은 OCR 시험용 책 사진이다. 저작물이므로 커밋하지 않는다 (`.gitignore`).
+- **분석 호출마다 비용·품질이 기록된다** (`services/evalService.js`). 응답 뒤 백그라운드에서 Claude가
+  `src/eval/rubric.md` 기준표로 채점하고 `server/logs/analysis-YYYY-MM.jsonl`에 한 줄 남긴다 (원문은 남기지 않음).
+  채점은 `claude-haiku-5-5`(기준표 프롬프트 캐시)로 하며 호출당 약 1.5원이다 (분석은 Haiku 4.5로 약 10원).
+  `ANALYSIS_JUDGE_UNTIL=YYYY-MM-DD`면 그날까지만 채점하고, `ANALYSIS_JUDGE=off`면 채점만, `ANALYSIS_LOG=off`면 기록 전체를 끈다
+  (테스트는 `test/helpers.js`에서 끈다). 단가·환율은 `src/eval/pricing.js`.
 - **`server/scripts/cleanup.js`는 DB의 모든 데이터를 지운다.** 사용자가 요청할 때만 실행한다.
 - 비밀값은 `server/.env`(DATABASE_URL, JWT_SECRET, ANTHROPIC_API_KEY, GOOGLE_VISION_API_KEY)에 있다.
   읽거나 출력하지 않는다.

@@ -1,6 +1,7 @@
 const prisma = require('../prisma');
 const crawlerService = require('./crawlerService');
 const claudeService = require('./claudeService');
+const evalService = require('./evalService');
 const { findExistingTags, toSuggestedTags, resolveTags } = require('./tagService');
 const httpError = require('../utils/httpError');
 
@@ -41,12 +42,10 @@ async function analyzeArticle({ userId, url }) {
   }
 
   const existingTags = await findExistingTags(userId);
-  const analysis = await claudeService.analyzeArticleTags(
-    `제목: ${crawled.title}\n\n${crawled.content}`,
-    existingTags
-  );
+  const articleText = `제목: ${crawled.title}\n\n${crawled.content}`;
+  const analysis = await claudeService.analyzeArticleTags(articleText, existingTags);
 
-  return {
+  const result = {
     url,
     title: crawled.title,
     publisher: crawled.publisher,
@@ -62,6 +61,19 @@ async function analyzeArticle({ userId, url }) {
     values: analysis.values ?? null,
     tags: toSuggestedTags(analysis.tags, existingTags),
   };
+
+  // 비용·품질 기록 (응답 뒤 백그라운드에서 채점)
+  evalService.recordInBackground({
+    kind: 'article',
+    userId,
+    input: { url, title: crawled.title },
+    source: articleText,
+    existingTags,
+    rawTags: analysis.tags,
+    result,
+    usage: analysis.usage,
+  });
+  return result;
 }
 
 // 사용자가 승인한 분석 결과를 기사·태그·ArticleTag로 한 번에 저장한다.

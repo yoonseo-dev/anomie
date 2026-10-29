@@ -103,7 +103,7 @@ describe('claudeService.analyzeArticleTags', () => {
     const stream = stubClaude(
       message({
         summary: '요약',
-        tags: [tag({ existingTag: 'T1', name: '아노미', excerpt: '규범이 느슨해질 때' })],
+        tags: [tag({ existingTag: 'T1', name: '아노미', excerpts: ['규범이 느슨해질 때'] })],
       })
     );
 
@@ -114,11 +114,12 @@ describe('claudeService.analyzeArticleTags', () => {
 
     const params = stream.mock.calls[0].arguments[0];
     const tagItem = params.output_config.format.schema.properties.tags.items;
-    assert.ok(tagItem.required.includes('excerpt'));
+    assert.ok(tagItem.required.includes('excerpts'));
+    assert.equal(tagItem.properties.excerpts.type, 'array');
     assert.match(params.messages[0].content, /책: 『자살론』 \(에밀 뒤르켐\)/);
     assert.match(params.messages[0].content, /규범이 느슨해질 때\n욕망은/);
     assert.deepEqual(result.tags[0].existingTag, existingTags[0]);
-    assert.equal(result.tags[0].excerpt, '규범이 느슨해질 때');
+    assert.deepEqual(result.tags[0].excerpts, ['규범이 느슨해질 때']);
   });
 
   test('기사 분석 스키마에는 근거 문장이 없다', async () => {
@@ -127,7 +128,56 @@ describe('claudeService.analyzeArticleTags', () => {
     await claudeService.analyzeArticleTags('기사', []);
 
     const tagItem = stream.mock.calls[0].arguments[0].output_config.format.schema.properties.tags.items;
-    assert.ok(!('excerpt' in tagItem.properties));
+    assert.ok(!('excerpts' in tagItem.properties));
+  });
+
+  test('분석 결과에 토큰 사용량(usage)을 함께 돌려준다', async () => {
+    stubClaude({ ...message(output([])), usage: { input_tokens: 1200, output_tokens: 300 } });
+
+    const result = await claudeService.analyzeArticleTags('기사', []);
+
+    assert.deepEqual(result.usage, {
+      model: 'claude-haiku-4-5-20251001',
+      inputTokens: 1200,
+      outputTokens: 300,
+      cacheWriteTokens: 0,
+      cacheReadTokens: 0,
+    });
+  });
+
+  test('채점은 기준표를 시스템 프롬프트에 넣고, 항목별 { score, reason } 또는 null을 받는다', async () => {
+    const scores = {
+      concept_fit: { score: 4, reason: '근거' },
+      tag_naming: { score: 5, reason: '근거' },
+      grounding: { score: 4, reason: '근거' },
+      summary: { score: 5, reason: '근거' },
+      reuse: null,
+      excerpt_choice: { score: 3, reason: '근거' },
+    };
+    const stream = stubClaude({
+      ...message(scores),
+      usage: { input_tokens: 900, output_tokens: 400, cache_creation_input_tokens: 0, cache_read_input_tokens: 2800 },
+    });
+
+    const judged = await claudeService.judgeAnalysis({
+      rubric: '# 기준표 본문',
+      kind: 'book',
+      source: 'OCR 원문',
+      existingTagNames: ['아노미'],
+      result: { summary: '요약', tags: [] },
+    });
+
+    const params = stream.mock.calls[0].arguments[0];
+    assert.equal(params.model, claudeService.JUDGE_MODEL);
+    // 기준표는 캐시 대상, 원문·결과는 매번 바뀌므로 캐시 뒤(user 메시지)에 둔다
+    assert.match(params.system[0].text, /# 기준표 본문/);
+    assert.deepEqual(params.system[0].cache_control, { type: 'ephemeral' });
+    assert.match(params.messages[0].content, /<원문>\nOCR 원문\n<\/원문>/);
+    assert.match(params.messages[0].content, /<기존 태그>\n아노미\n/);
+    assert.deepEqual(Object.keys(params.output_config.format.schema.properties), claudeService.SCORE_ITEMS);
+    assert.deepEqual(judged.scores, scores);
+    assert.equal(judged.usage.model, claudeService.JUDGE_MODEL);
+    assert.equal(judged.usage.cacheReadTokens, 2800);
   });
 
   test('API 한도 초과는 503, 그 밖의 API 오류는 502', async () => {

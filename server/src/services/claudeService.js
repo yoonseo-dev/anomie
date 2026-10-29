@@ -4,6 +4,9 @@ const httpError = require('../utils/httpError');
 const client = new Anthropic();
 
 const MODEL = 'claude-haiku-4-5-20251001';
+// 채점용 모델. 기준표(약 2,800토큰)를 프롬프트 캐시에 올리려면 최소 길이가 512토큰인 모델이어야 한다
+// (Haiku 4.5는 4,096토큰 미만이면 캐시되지 않음). 단가도 Haiku 4.5의 1/10 (10-29)
+const JUDGE_MODEL = 'claude-haiku-5-5';
 
 // Tag.category에 저장하는 고정 분야 목록. 목록 밖이면 "기타" (doc/plan.md 3장)
 const CATEGORIES = ['사회학', '철학', '정치학', '경제학', '심리학', '인류학', '커뮤니케이션학', '기타'];
@@ -13,7 +16,10 @@ const tagRules = (source) => `태그 선정 기준:
 1. 학문적 근거 — 반드시 특정 학자, 이론, 학파와 직접 연결되는 개념만 선택한다. 막연한 키워드나 일상 용어는 제외한다.
 2. 변별력 — 이 ${source}에 특별히 적합한 태그여야 한다. 어떤 글에나 붙여도 어색하지 않을 태그는 제외한다.
 3. 태그 수 제한 — 최대 3개. 억지로 채우지 말고 진짜 해당되는 것만 선택한다.
-4. 확신 원칙 — 억지로 끼워 맞추지 않되, 합리적 학문적 근거가 있다면 반드시 태그를 붙인다. ${source}에서 사회적 현상이나 개념이 분명히 드러난다면 최소 1개는 포함한다.
+4. 태그 이름 — 학계에서 통용되는 개념어를 짧은 명사구로 쓴다 (보통 2~8자). 글의 내용을 문장처럼 풀어 쓰지 않는다. 다른 글에도 그대로 붙일 수 있는 이름이어야 다른 스크랩과 연결된다.
+   - 좋은 예: 아노미, 지위 불안, 인정 투쟁, 상대적 박탈감, 낙인 효과, 사회적 자본
+   - 나쁜 예: "사회적 지위의 조건부 인정", "부모의 무조건적 사랑과 성인 관계의 조건성"
+5. 확신 원칙 — 억지로 끼워 맞추지 않되, 합리적 학문적 근거가 있다면 반드시 태그를 붙인다. ${source}에서 사회적 현상이나 개념이 분명히 드러난다면 최소 1개는 포함한다.
 
 사용자의 기존 태그 재사용:
 - 사용자 메시지에 "기존 태그" 목록이 번호(T1, T2 …)와 함께 주어진다.
@@ -48,14 +54,17 @@ OCR 텍스트 다루기:
 - 줄 끝에서 단어가 끊겨 있을 수 있다 (예: "우리의 자" / "질을").
 
 ${tagRules('책 구절')}
-- excerpt: 이 태그의 근거가 되는 본문 문장을 OCR 텍스트에서 1~3문장 골라 **한 글자도 바꾸지 않고 그대로** 옮긴다. 맞춤법이나 OCR 오류를 고치지 않고, 요약하거나 말을 바꾸지 않는다. 줄바꿈은 공백 하나로 바꿔도 된다. 본문이 아닌 글자는 넣지 않는다. 태그마다 그 개념이 가장 잘 드러나는 다른 문장을 고른다.
+- excerpts: 이 태그의 근거가 되는 본문을 OCR 텍스트에서 골라 옮긴 구간 목록 (1~3개, 합쳐서 1~3문장).
+  - 각 구간은 OCR 텍스트에서 **끊기지 않고 이어진 부분**이어야 한다. 떨어진 두 문장을 하나의 구간으로 이어 붙이지 않는다. 떨어진 문장이 필요하면 구간을 나눈다.
+  - **한 글자도 바꾸지 않고 그대로** 옮긴다. 맞춤법이나 OCR 오류를 고치지 않고, 접속사("그러나" 등)를 빼거나 말을 바꾸지 않는다. 줄바꿈은 공백 하나로 바꿔도 된다.
+  - 본문이 아닌 글자는 넣지 않는다. 태그마다 그 개념이 가장 잘 드러나는 다른 부분을 고른다.
 
 구절 필드 작성 기준:
 - summary: 이 페이지에서 저자가 말하는 핵심 주장을 2~3문장으로 요약한다. 나중에 원문 대신 이 요약만 보고 다른 스크랩(뉴스 등)과의 개념 연결을 판단하므로, 주장의 내용이 드러나게 쓴다.`;
 
 const nullableString = { anyOf: [{ type: 'string' }, { type: 'null' }] };
 
-// 태그 하나의 스키마. 책은 근거 문장(excerpt)을 추가로 받는다.
+// 태그 하나의 스키마. 책은 근거 문장 구간(excerpts)을 추가로 받는다.
 function tagSchema({ withExcerpt = false } = {}) {
   const properties = {
     existingTag: nullableString,
@@ -65,7 +74,7 @@ function tagSchema({ withExcerpt = false } = {}) {
     explanation: { type: 'string' },
     reason: { type: 'string' },
     similarExistingTags: { type: 'array', items: { type: 'string' } },
-    ...(withExcerpt && { excerpt: { type: 'string' } }),
+    ...(withExcerpt && { excerpts: { type: 'array', items: { type: 'string' } } }),
   };
   return { type: 'object', properties, required: Object.keys(properties), additionalProperties: false };
 }
@@ -117,12 +126,13 @@ function resolveRefs(raw, byRef) {
   });
 }
 
-// JSON 스키마를 지정해 Claude를 호출하고 파싱한 결과를 돌려준다. what은 오류 문구용 ("기사", "책 구절")
-async function requestJson({ system, schema, content, what }) {
+// JSON 스키마를 지정해 Claude를 호출한다. what은 오류 문구용 ("기사", "책 구절")
+// { data: 파싱한 결과, usage: { model, inputTokens, outputTokens, cacheWriteTokens, cacheReadTokens } }를 돌려준다 (비용 기록용)
+async function requestJson({ model = MODEL, system, schema, content, what }) {
   let message;
   try {
     const stream = client.messages.stream({
-      model: MODEL,
+      model,
       max_tokens: 8192,
       system,
       output_config: { format: { type: 'json_schema', schema } },
@@ -140,17 +150,29 @@ async function requestJson({ system, schema, content, what }) {
     throw err;
   }
 
+  const cacheWrite = message.usage.cache_creation_input_tokens ?? 0;
+  const cacheRead = message.usage.cache_read_input_tokens ?? 0;
   console.log(
-    `[Claude] ${what} | 토큰 입력 ${message.usage.input_tokens} / 출력 ${message.usage.output_tokens} | stop: ${message.stop_reason}`
+    `[Claude] ${what} | 토큰 입력 ${message.usage.input_tokens} / 출력 ${message.usage.output_tokens}` +
+      (cacheWrite || cacheRead ? ` / 캐시 쓰기 ${cacheWrite} · 읽기 ${cacheRead}` : '') +
+      ` | stop: ${message.stop_reason}`
   );
   if (message.stop_reason !== 'end_turn') {
     // max_tokens: 응답이 잘림, refusal: 스키마를 따르지 않았을 수 있음
     throw httpError(502, `${what} 분석 결과를 받지 못했습니다. 다시 시도해주세요.`);
   }
 
+  // inputTokens는 캐시를 뺀 나머지 입력이다
+  const usage = {
+    model,
+    inputTokens: message.usage.input_tokens,
+    outputTokens: message.usage.output_tokens,
+    cacheWriteTokens: cacheWrite,
+    cacheReadTokens: cacheRead,
+  };
   const text = message.content.find((b) => b.type === 'text')?.text ?? '';
   try {
-    return JSON.parse(text);
+    return { data: JSON.parse(text), usage };
   } catch {
     throw httpError(502, `${what} 분석 결과를 읽을 수 없습니다. 다시 시도해주세요.`);
   }
@@ -159,29 +181,86 @@ async function requestJson({ system, schema, content, what }) {
 // 기사를 분석해 요약·분석·태그 제안을 돌려준다.
 // existingTags: 사용자의 기존 태그 [{ id, name }]. Claude가 같은 개념이면 이 중에서 고른다.
 // 태그마다 existingTag(기존 태그 객체 또는 null)와 similarExisting(새 태그일 때 비슷한 기존 태그)이 붙는다.
+// usage(토큰 사용량)도 함께 돌려준다.
 async function analyzeArticleTags(articleText, existingTags = []) {
   const { byRef, text: tagList } = numberTags(existingTags);
-  const raw = await requestJson({
+  const { data: raw, usage } = await requestJson({
     system: ARTICLE_SYSTEM_PROMPT,
     schema: ARTICLE_ANALYSIS_SCHEMA,
     content: `기존 태그:\n${tagList}\n\n다음 뉴스 기사를 분석해주세요:\n\n${articleText}`,
     what: '기사',
   });
-  return { ...raw, tags: resolveRefs(raw, byRef) };
+  return { ...raw, tags: resolveRefs(raw, byRef), usage };
 }
 
-// 책 페이지의 OCR 텍스트를 분석해 요약과 태그 제안(근거 문장 포함)을 돌려준다.
-// 근거 문장이 OCR 텍스트에 그대로 있는지는 호출한 쪽에서 확인한다.
+// 책 페이지의 OCR 텍스트를 분석해 요약과 태그 제안(근거 문장 구간 excerpts 포함)을 돌려준다.
+// 구간마다 OCR 텍스트에 그대로 있는지는 호출한 쪽에서 확인한다.
 async function analyzeBookPage({ ocrText, bookTitle, author }, existingTags = []) {
   const { byRef, text: tagList } = numberTags(existingTags);
   const book = author ? `『${bookTitle}』 (${author})` : `『${bookTitle}』`;
-  const raw = await requestJson({
+  const { data: raw, usage } = await requestJson({
     system: BOOK_SYSTEM_PROMPT,
     schema: BOOK_ANALYSIS_SCHEMA,
     content: `기존 태그:\n${tagList}\n\n책: ${book}\n\n다음은 이 책 한 페이지의 OCR 텍스트입니다:\n\n${ocrText}`,
     what: '책 구절',
   });
-  return { ...raw, tags: resolveRefs(raw, byRef) };
+  return { ...raw, tags: resolveRefs(raw, byRef), usage };
 }
 
-module.exports = { client, analyzeArticleTags, analyzeBookPage, CATEGORIES };
+const SCORE_ITEMS = ['concept_fit', 'tag_naming', 'grounding', 'summary', 'reuse', 'excerpt_choice'];
+
+const scoreSchema = {
+  anyOf: [
+    {
+      type: 'object',
+      properties: { score: { type: 'integer', enum: [1, 2, 3, 4, 5] }, reason: { type: 'string' } },
+      required: ['score', 'reason'],
+      additionalProperties: false,
+    },
+    { type: 'null' },
+  ],
+};
+
+const JUDGE_SCHEMA = {
+  type: 'object',
+  properties: Object.fromEntries(SCORE_ITEMS.map((key) => [key, scoreSchema])),
+  required: SCORE_ITEMS,
+  additionalProperties: false,
+};
+
+// 분석 결과를 채점 기준표(rubric)대로 채점한다. 항목마다 { score, reason } 또는 null.
+// source: 원문 (기사 본문 또는 OCR 텍스트), result: 사용자에게 돌려준 분석 결과 (요약·태그)
+async function judgeAnalysis({ rubric, kind, source, existingTagNames, result }) {
+  const kindName = kind === 'book' ? '책 페이지(OCR 텍스트)' : '뉴스 기사';
+  const { data, usage } = await requestJson({
+    model: JUDGE_MODEL,
+    // 기준표는 매번 같으므로 캐시한다 (5분 안에 다시 채점하면 입력 단가의 1/10로 읽음)
+    system: [
+      {
+        type: 'text',
+        text: `당신은 사회학·철학 개념 태깅 결과를 채점하는 엄격한 채점자입니다. 아래 기준표만 따라 채점하고, 항목마다 점수와 한두 문장의 판단 근거를 씁니다. 근거에는 원문이나 결과의 구체적인 부분을 짚습니다.
+
+${rubric}`,
+        cache_control: { type: 'ephemeral' },
+      },
+    ],
+    schema: JUDGE_SCHEMA,
+    content: `분석 대상: ${kindName}
+
+<원문>
+${source}
+</원문>
+
+<기존 태그>
+${existingTagNames.length ? existingTagNames.join(', ') : '(없음)'}
+</기존 태그>
+
+<분석 결과>
+${JSON.stringify(result, null, 2)}
+</분석 결과>`,
+    what: '채점',
+  });
+  return { scores: data, usage };
+}
+
+module.exports = { client, analyzeArticleTags, analyzeBookPage, judgeAnalysis, CATEGORIES, SCORE_ITEMS, JUDGE_MODEL };
