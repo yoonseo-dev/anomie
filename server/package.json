@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "test": "node --test --test-concurrency=1 test/**/*.test.js",
-    "eval:report": "node scripts/analysisReport.js"
+    "eval:report": "node scripts/analysisReport.js",
+    "credit": "node scripts/credit.js"
   },
   "keywords": [],
   "author": "",

@@ -1,5 +1,6 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const httpError = require('../utils/httpError');
+const creditService = require('./creditService');
 
 const client = new Anthropic();
 
@@ -157,10 +158,6 @@ async function requestJson({ model = MODEL, system, schema, content, what }) {
       (cacheWrite || cacheRead ? ` / 캐시 쓰기 ${cacheWrite} · 읽기 ${cacheRead}` : '') +
       ` | stop: ${message.stop_reason}`
   );
-  if (message.stop_reason !== 'end_turn') {
-    // max_tokens: 응답이 잘림, refusal: 스키마를 따르지 않았을 수 있음
-    throw httpError(502, `${what} 분석 결과를 받지 못했습니다. 다시 시도해주세요.`);
-  }
 
   // inputTokens는 캐시를 뺀 나머지 입력이다
   const usage = {
@@ -170,6 +167,13 @@ async function requestJson({ model = MODEL, system, schema, content, what }) {
     cacheWriteTokens: cacheWrite,
     cacheReadTokens: cacheRead,
   };
+  // 응답이 잘리거나 결과를 못 쓰는 경우에도 비용은 청구되므로 먼저 잔액에서 뺀다
+  creditService.recordUsageInBackground({ usage, what });
+
+  if (message.stop_reason !== 'end_turn') {
+    // max_tokens: 응답이 잘림, refusal: 스키마를 따르지 않았을 수 있음
+    throw httpError(502, `${what} 분석 결과를 받지 못했습니다. 다시 시도해주세요.`);
+  }
   const text = message.content.find((b) => b.type === 'text')?.text ?? '';
   try {
     return { data: JSON.parse(text), usage };

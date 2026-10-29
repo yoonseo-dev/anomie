@@ -26,6 +26,7 @@ docker compose up -d                 # 루트에서
 npm start                            # node index.js, 기본 포트 3000
 npm test                             # node:test. 개발 DB 필요 (임시 사용자를 만들고 끝나면 지운다)
 npm run eval:report                  # 분석 비용·채점 기록 요약 (-- --month 2026-10 --last 20)
+npm run credit                       # Claude 크레딧 잔액(추정)·날짜별 사용액 (-- --set 4.70 / --add 10 / --last 30)
 npx prisma migrate dev --name <이름>  # 스키마 변경 후
 npx prisma generate
 
@@ -81,6 +82,10 @@ flutter build web --release          # 결과물: client/build/web
   채점은 `claude-haiku-5-5`(기준표 프롬프트 캐시)로 하며 호출당 약 1.5원이다 (분석은 Haiku 4.5로 약 10원).
   `ANALYSIS_JUDGE_UNTIL=YYYY-MM-DD`면 그날까지만 채점하고, `ANALYSIS_JUDGE=off`면 채점만, `ANALYSIS_LOG=off`면 기록 전체를 끈다
   (테스트는 `test/helpers.js`에서 끈다). 단가·환율은 `src/eval/pricing.js`.
+- **Claude 크레딧 잔액은 서버가 장부로 추정한다** (`services/creditService.js`, `server/logs/credit.jsonl`).
+  API로는 잔액을 알 수 없으므로 Console에서 본 잔액을 `--set`으로 넣고, `claudeService.requestJson`이
+  호출마다(분석·채점·관계 제안, 결과를 못 쓴 호출 포함) 정가 기준 비용을 뺀다. 이 서버 밖의 사용분은 빠지므로
+  가끔 Console 잔액으로 다시 `--set`한다. 테스트(node --test)에서는 기록하지 않는다 (`CREDIT_LOG_DIR`를 주면 기록).
 - **`server/scripts/cleanup.js`는 DB의 모든 데이터를 지운다.** 사용자가 요청할 때만 실행한다.
 - 비밀값은 `server/.env`(DATABASE_URL, JWT_SECRET, ANTHROPIC_API_KEY, GOOGLE_VISION_API_KEY)에 있다.
   읽거나 출력하지 않는다.
