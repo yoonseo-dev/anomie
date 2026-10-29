@@ -99,6 +99,37 @@ describe('claudeService.analyzeArticleTags', () => {
     await assert.rejects(claudeService.analyzeArticleTags('기사', []), { status: 502 });
   });
 
+  test('책 분석은 OCR 텍스트와 책 정보를 넘기고, 태그마다 근거 문장(excerpt)을 받는다', async () => {
+    const stream = stubClaude(
+      message({
+        summary: '요약',
+        tags: [tag({ existingTag: 'T1', name: '아노미', excerpt: '규범이 느슨해질 때' })],
+      })
+    );
+
+    const result = await claudeService.analyzeBookPage(
+      { ocrText: '규범이 느슨해질 때\n욕망은', bookTitle: '자살론', author: '에밀 뒤르켐' },
+      existingTags
+    );
+
+    const params = stream.mock.calls[0].arguments[0];
+    const tagItem = params.output_config.format.schema.properties.tags.items;
+    assert.ok(tagItem.required.includes('excerpt'));
+    assert.match(params.messages[0].content, /책: 『자살론』 \(에밀 뒤르켐\)/);
+    assert.match(params.messages[0].content, /규범이 느슨해질 때\n욕망은/);
+    assert.deepEqual(result.tags[0].existingTag, existingTags[0]);
+    assert.equal(result.tags[0].excerpt, '규범이 느슨해질 때');
+  });
+
+  test('기사 분석 스키마에는 근거 문장이 없다', async () => {
+    const stream = stubClaude(message(output([])));
+
+    await claudeService.analyzeArticleTags('기사', []);
+
+    const tagItem = stream.mock.calls[0].arguments[0].output_config.format.schema.properties.tags.items;
+    assert.ok(!('excerpt' in tagItem.properties));
+  });
+
   test('API 한도 초과는 503, 그 밖의 API 오류는 502', async () => {
     const headers = new Headers();
     stubClaude(new Anthropic.RateLimitError(429, {}, 'rate limited', headers));

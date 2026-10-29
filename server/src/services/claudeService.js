@@ -8,13 +8,12 @@ const MODEL = 'claude-haiku-4-5-20251001';
 // Tag.category에 저장하는 고정 분야 목록. 목록 밖이면 "기타" (doc/plan.md 3장)
 const CATEGORIES = ['사회학', '철학', '정치학', '경제학', '심리학', '인류학', '커뮤니케이션학', '기타'];
 
-const SYSTEM_PROMPT = `당신은 사회학 전문가입니다. 주어진 뉴스 기사를 분석하여 관련 학문적 개념 태그, 기사 요약, 기사 평론, 기사 분석을 지정된 JSON 형식으로 반환하세요.
-
-태그 선정 기준:
+// 기사·책 공통 태그 기준. source는 "기사" 또는 "책 구절"
+const tagRules = (source) => `태그 선정 기준:
 1. 학문적 근거 — 반드시 특정 학자, 이론, 학파와 직접 연결되는 개념만 선택한다. 막연한 키워드나 일상 용어는 제외한다.
-2. 변별력 — 이 기사에 특별히 적합한 태그여야 한다. 어떤 기사에나 붙여도 어색하지 않을 태그는 제외한다.
+2. 변별력 — 이 ${source}에 특별히 적합한 태그여야 한다. 어떤 글에나 붙여도 어색하지 않을 태그는 제외한다.
 3. 태그 수 제한 — 최대 3개. 억지로 채우지 말고 진짜 해당되는 것만 선택한다.
-4. 확신 원칙 — 억지로 끼워 맞추지 않되, 합리적 학문적 근거가 있다면 반드시 태그를 붙인다. 기사에서 사회적 현상이 분명히 드러난다면 최소 1개는 포함한다.
+4. 확신 원칙 — 억지로 끼워 맞추지 않되, 합리적 학문적 근거가 있다면 반드시 태그를 붙인다. ${source}에서 사회적 현상이나 개념이 분명히 드러난다면 최소 1개는 포함한다.
 
 사용자의 기존 태그 재사용:
 - 사용자 메시지에 "기존 태그" 목록이 번호(T1, T2 …)와 함께 주어진다.
@@ -26,8 +25,12 @@ const SYSTEM_PROMPT = `당신은 사회학 전문가입니다. 주어진 뉴스 
 태그 각 필드 작성 기준:
 - category: 다음 중 하나 — ${CATEGORIES.join(', ')}. 어디에도 맞지 않으면 "기타".
 - description: (새 태그만) 개념의 학문적 기원(제안한 학자와 시대), 핵심 내용, 관련 이론적 맥락을 3~4문장으로 작성한다. 확실하지 않은 학자 이름이나 연도는 쓰지 않는다.
-- explanation: 이 기사의 구체적인 맥락에서 해당 개념이 어떻게 드러나는지 설명한다. 기사의 사건·인물·구조를 개념과 연결하여 3~4문장으로 작성한다.
-- reason: 이 태그를 선택한 핵심 근거를 한두 문장으로 간결하게 요약한다.
+- explanation: 이 ${source}의 구체적인 맥락에서 해당 개념이 어떻게 드러나는지 3~4문장으로 설명한다.
+- reason: 이 태그를 선택한 핵심 근거를 한두 문장으로 간결하게 요약한다.`;
+
+const ARTICLE_SYSTEM_PROMPT = `당신은 사회학 전문가입니다. 주어진 뉴스 기사를 분석하여 관련 학문적 개념 태그, 기사 요약, 기사 평론, 기사 분석을 지정된 JSON 형식으로 반환하세요.
+
+${tagRules('기사')}
 
 기사 필드 작성 기준:
 - summary: 기사의 핵심 사실과 쟁점을 2~3문장으로 요약한다. 나중에 원문 대신 이 요약만 보고 다른 스크랩과의 개념 연결을 판단하므로, 누가·무엇을·왜가 드러나게 쓴다.
@@ -38,7 +41,34 @@ const SYSTEM_PROMPT = `당신은 사회학 전문가입니다. 주어진 뉴스 
 - stakeholders: 사건에 등장하는 행위자들이 각각 무엇을 원하고 누구와 대립하는지 정리한다. 이해관계가 복잡하거나 대립 구도가 뚜렷한 기사에서만 작성하고, 단순 사안이면 null.
 - values: 기사가 당연하게 전제하는 가치 판단을 짚어내고, 그것이 어떤 정치철학적·윤리적 입장과 연결되는지 설명한다. 가치 전제가 불분명하거나 중립적 보도이면 null.`;
 
+const BOOK_SYSTEM_PROMPT = `당신은 사회학·철학 전문가입니다. 책 한 페이지를 OCR로 읽은 텍스트가 주어집니다. 관련 학문적 개념 태그와 구절 요약을 지정된 JSON 형식으로 반환하세요.
+
+OCR 텍스트 다루기:
+- 사진을 OCR로 읽은 것이라 본문이 아닌 글자(쪽번호, 머리말, 책 제목, 날짜, 앱 화면 표시 등)가 섞이거나 줄 순서가 어긋날 수 있다. 본문이 아닌 글자는 무시한다.
+- 줄 끝에서 단어가 끊겨 있을 수 있다 (예: "우리의 자" / "질을").
+
+${tagRules('책 구절')}
+- excerpt: 이 태그의 근거가 되는 본문 문장을 OCR 텍스트에서 1~3문장 골라 **한 글자도 바꾸지 않고 그대로** 옮긴다. 맞춤법이나 OCR 오류를 고치지 않고, 요약하거나 말을 바꾸지 않는다. 줄바꿈은 공백 하나로 바꿔도 된다. 본문이 아닌 글자는 넣지 않는다. 태그마다 그 개념이 가장 잘 드러나는 다른 문장을 고른다.
+
+구절 필드 작성 기준:
+- summary: 이 페이지에서 저자가 말하는 핵심 주장을 2~3문장으로 요약한다. 나중에 원문 대신 이 요약만 보고 다른 스크랩(뉴스 등)과의 개념 연결을 판단하므로, 주장의 내용이 드러나게 쓴다.`;
+
 const nullableString = { anyOf: [{ type: 'string' }, { type: 'null' }] };
+
+// 태그 하나의 스키마. 책은 근거 문장(excerpt)을 추가로 받는다.
+function tagSchema({ withExcerpt = false } = {}) {
+  const properties = {
+    existingTag: nullableString,
+    name: { type: 'string' },
+    category: { type: 'string', enum: CATEGORIES },
+    description: nullableString,
+    explanation: { type: 'string' },
+    reason: { type: 'string' },
+    similarExistingTags: { type: 'array', items: { type: 'string' } },
+    ...(withExcerpt && { excerpt: { type: 'string' } }),
+  };
+  return { type: 'object', properties, required: Object.keys(properties), additionalProperties: false };
+}
 
 const ARTICLE_ANALYSIS_SCHEMA = {
   type: 'object',
@@ -49,25 +79,19 @@ const ARTICLE_ANALYSIS_SCHEMA = {
     rhetoric: nullableString,
     stakeholders: nullableString,
     values: nullableString,
-    tags: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          existingTag: nullableString,
-          name: { type: 'string' },
-          category: { type: 'string', enum: CATEGORIES },
-          description: nullableString,
-          explanation: { type: 'string' },
-          reason: { type: 'string' },
-          similarExistingTags: { type: 'array', items: { type: 'string' } },
-        },
-        required: ['existingTag', 'name', 'category', 'description', 'explanation', 'reason', 'similarExistingTags'],
-        additionalProperties: false,
-      },
-    },
+    tags: { type: 'array', items: tagSchema() },
   },
   required: ['summary', 'commentary', 'framing', 'rhetoric', 'stakeholders', 'values', 'tags'],
+  additionalProperties: false,
+};
+
+const BOOK_ANALYSIS_SCHEMA = {
+  type: 'object',
+  properties: {
+    summary: { type: 'string' },
+    tags: { type: 'array', items: tagSchema({ withExcerpt: true }) },
+  },
+  required: ['summary', 'tags'],
   additionalProperties: false,
 };
 
@@ -84,42 +108,25 @@ function numberTags(existingTags) {
 
 // Claude가 고른 번호를 실제 태그로 바꾼다. 목록에 없는 번호는 버린다.
 function resolveRefs(raw, byRef) {
-  return raw.tags.map((t) => {
-    const existing = t.existingTag ? byRef.get(t.existingTag) : undefined;
+  return raw.tags.map(({ existingTag: ref, similarExistingTags, ...rest }) => {
+    const existing = ref ? byRef.get(ref) : undefined;
     const similar = existing
       ? []
-      : [...new Set(t.similarExistingTags)].map((ref) => byRef.get(ref)).filter(Boolean);
-    return {
-      existingTag: existing ?? null,
-      name: t.name,
-      category: t.category,
-      description: t.description,
-      explanation: t.explanation,
-      reason: t.reason,
-      similarExisting: similar,
-    };
+      : [...new Set(similarExistingTags)].map((r) => byRef.get(r)).filter(Boolean);
+    return { ...rest, existingTag: existing ?? null, similarExisting: similar };
   });
 }
 
-// 기사를 분석해 요약·분석·태그 제안을 돌려준다.
-// existingTags: 사용자의 기존 태그 [{ id, name }]. Claude가 같은 개념이면 이 중에서 고른다.
-// 태그마다 existingTag(기존 태그 객체 또는 null)와 similarExisting(새 태그일 때 비슷한 기존 태그)이 붙는다.
-async function analyzeArticleTags(articleText, existingTags = []) {
-  const { byRef, text: tagList } = numberTags(existingTags);
-
+// JSON 스키마를 지정해 Claude를 호출하고 파싱한 결과를 돌려준다. what은 오류 문구용 ("기사", "책 구절")
+async function requestJson({ system, schema, content, what }) {
   let message;
   try {
     const stream = client.messages.stream({
       model: MODEL,
       max_tokens: 8192,
-      system: SYSTEM_PROMPT,
-      output_config: { format: { type: 'json_schema', schema: ARTICLE_ANALYSIS_SCHEMA } },
-      messages: [
-        {
-          role: 'user',
-          content: `기존 태그:\n${tagList}\n\n다음 뉴스 기사를 분석해주세요:\n\n${articleText}`,
-        },
-      ],
+      system,
+      output_config: { format: { type: 'json_schema', schema } },
+      messages: [{ role: 'user', content }],
     });
     message = await stream.finalMessage();
   } catch (err) {
@@ -128,28 +135,53 @@ async function analyzeArticleTags(articleText, existingTags = []) {
     }
     if (err instanceof Anthropic.APIError) {
       console.error(`[Claude] API 오류 ${err.status}: ${err.message}`);
-      throw httpError(502, '기사 분석에 실패했습니다. 잠시 후 다시 시도해주세요.');
+      throw httpError(502, `${what} 분석에 실패했습니다. 잠시 후 다시 시도해주세요.`);
     }
     throw err;
   }
 
   console.log(
-    `[Claude] 토큰 입력 ${message.usage.input_tokens} / 출력 ${message.usage.output_tokens} | stop: ${message.stop_reason}`
+    `[Claude] ${what} | 토큰 입력 ${message.usage.input_tokens} / 출력 ${message.usage.output_tokens} | stop: ${message.stop_reason}`
   );
   if (message.stop_reason !== 'end_turn') {
     // max_tokens: 응답이 잘림, refusal: 스키마를 따르지 않았을 수 있음
-    throw httpError(502, '기사 분석 결과를 받지 못했습니다. 다시 시도해주세요.');
+    throw httpError(502, `${what} 분석 결과를 받지 못했습니다. 다시 시도해주세요.`);
   }
 
   const text = message.content.find((b) => b.type === 'text')?.text ?? '';
-  let raw;
   try {
-    raw = JSON.parse(text);
+    return JSON.parse(text);
   } catch {
-    throw httpError(502, '기사 분석 결과를 읽을 수 없습니다. 다시 시도해주세요.');
+    throw httpError(502, `${what} 분석 결과를 읽을 수 없습니다. 다시 시도해주세요.`);
   }
+}
 
+// 기사를 분석해 요약·분석·태그 제안을 돌려준다.
+// existingTags: 사용자의 기존 태그 [{ id, name }]. Claude가 같은 개념이면 이 중에서 고른다.
+// 태그마다 existingTag(기존 태그 객체 또는 null)와 similarExisting(새 태그일 때 비슷한 기존 태그)이 붙는다.
+async function analyzeArticleTags(articleText, existingTags = []) {
+  const { byRef, text: tagList } = numberTags(existingTags);
+  const raw = await requestJson({
+    system: ARTICLE_SYSTEM_PROMPT,
+    schema: ARTICLE_ANALYSIS_SCHEMA,
+    content: `기존 태그:\n${tagList}\n\n다음 뉴스 기사를 분석해주세요:\n\n${articleText}`,
+    what: '기사',
+  });
   return { ...raw, tags: resolveRefs(raw, byRef) };
 }
 
-module.exports = { client, analyzeArticleTags, CATEGORIES };
+// 책 페이지의 OCR 텍스트를 분석해 요약과 태그 제안(근거 문장 포함)을 돌려준다.
+// 근거 문장이 OCR 텍스트에 그대로 있는지는 호출한 쪽에서 확인한다.
+async function analyzeBookPage({ ocrText, bookTitle, author }, existingTags = []) {
+  const { byRef, text: tagList } = numberTags(existingTags);
+  const book = author ? `『${bookTitle}』 (${author})` : `『${bookTitle}』`;
+  const raw = await requestJson({
+    system: BOOK_SYSTEM_PROMPT,
+    schema: BOOK_ANALYSIS_SCHEMA,
+    content: `기존 태그:\n${tagList}\n\n책: ${book}\n\n다음은 이 책 한 페이지의 OCR 텍스트입니다:\n\n${ocrText}`,
+    what: '책 구절',
+  });
+  return { ...raw, tags: resolveRefs(raw, byRef) };
+}
+
+module.exports = { client, analyzeArticleTags, analyzeBookPage, CATEGORIES };

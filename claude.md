@@ -65,14 +65,18 @@ flutter build web --release          # 결과물: client/build/web
   관계는 항상 `tagAId < tagBId`로 저장하고, 근거 행은 기사/책 중 하나만 채운다 (마이그레이션 SQL의 CHECK 제약).
   기사는 분석(`POST /articles/analyze`, 저장 안 함)과 저장(`POST /articles`, 승인한 태그만)이 나뉘었다.
   analyze는 사용자의 기존 태그를 `T1`… 번호로 Claude에 넘기고, 태그마다 기존 `tagId` 또는 새 이름으로 돌려준다.
-  Claude 응답은 구조화 출력(JSON 스키마)으로 받는다. 책·관계 API는 없다.
+  Claude 응답은 구조화 출력(JSON 스키마)으로 받는다.
+  책도 같은 구조다: `POST /book-scraps/analyze`(multipart 사진 → Google Cloud Vision OCR → Claude, 저장 안 함),
+  `POST /book-scraps`(승인한 태그 + 근거 문장). 근거 문장이 OCR 텍스트에 없으면 `excerptVerified: false`("확인 필요").
+  관계 API는 없다.
 - **클라이언트는 서버와 연결되지 않았다.** `client/lib/shared/data/`의 저장소는 모두
   `Fake...Repository`(메모리 가짜 데이터)다. 실제 연동은 같은 추상 클래스를 구현하는
   dio 버전을 만들어 Provider만 바꾸는 방식으로 한다. (`dio`는 아직 pubspec에 없다.)
-- 서버 API는 현재 `/auth/signup`, `/auth/login`, `/articles` (GET 목록·상세, POST /analyze, POST, DELETE)뿐이다.
-- 기사 분석 모델은 `server/src/services/claudeService.js`에 지정돼 있다.
+- 서버 API는 현재 `/auth/signup`, `/auth/login`, `/articles`·`/book-scraps` (GET 목록·상세, POST /analyze, POST, DELETE)뿐이다.
+- 분석 모델은 `server/src/services/claudeService.js`에, OCR 호출은 `server/src/services/ocrService.js`에 있다.
+- `sample/`(루트)은 OCR 시험용 책 사진이다. 저작물이므로 커밋하지 않는다 (`.gitignore`).
 - **`server/scripts/cleanup.js`는 DB의 모든 데이터를 지운다.** 사용자가 요청할 때만 실행한다.
-- 비밀값은 `server/.env`(DATABASE_URL, JWT_SECRET, ANTHROPIC_API_KEY)에 있다.
+- 비밀값은 `server/.env`(DATABASE_URL, JWT_SECRET, ANTHROPIC_API_KEY, GOOGLE_VISION_API_KEY)에 있다.
   읽거나 출력하지 않는다.
 
 ## 서버 규칙
@@ -81,7 +85,7 @@ flutter build web --release          # 결과물: client/build/web
 - 인증이 필요한 라우트에는 `middleware/auth.js`를 붙인다. `req.user = { userId, email }`.
 - 에러는 `next(err)`로 넘긴다. 응답 키는 `{ message }`로 통일한다.
   서비스에서는 `src/utils/httpError.js`로 상태 코드를 담아 던진다.
-- 서버 테스트는 `server/test/`에 둔다. 크롤러·Claude는 `mock.method(crawlerService, ...)`로 바꿔
+- 서버 테스트는 `server/test/`에 둔다. 크롤러·OCR·Claude는 `mock.method(crawlerService, ...)`로 바꿔
   실제 호출을 하지 않는다 (그래서 서비스끼리는 구조 분해 없이 모듈 객체로 호출한다).
 - Prisma 7은 내장 드라이버가 없다. 반드시 `src/prisma.js`의 싱글톤(pg 어댑터)을 쓴다.
 - 다른 사용자의 데이터에 접근하지 않도록 조회 조건에 항상 `userId`를 넣는다.

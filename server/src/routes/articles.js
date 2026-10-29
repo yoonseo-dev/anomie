@@ -2,43 +2,9 @@ const { Router } = require('express');
 const authMiddleware = require('../middleware/auth');
 const prisma = require('../prisma');
 const { analyzeArticle, saveArticle, ARTICLE_INCLUDE, MIN_CONTENT_LENGTH, MAX_CONTENT_LENGTH } = require('../services/articleService');
-const { CATEGORIES } = require('../services/claudeService');
+const { readString, readUrl, readTags } = require('../utils/validate');
 
 const router = Router();
-
-const MAX_TAGS = 10;
-
-// 문자열 필드 하나를 검사한다. 비어 있으면 optional일 때 null, 아니면 에러.
-function readString(body, key, { max, min = 1, optional = false }, errors) {
-  const value = body[key];
-  if (value === undefined || value === null || value === '') {
-    if (!optional) errors.push(`${key}은(는) 필수입니다.`);
-    return null;
-  }
-  if (typeof value !== 'string') {
-    errors.push(`${key}은(는) 문자열이어야 합니다.`);
-    return null;
-  }
-  if (value.length < min || value.length > max) {
-    errors.push(`${key}은(는) ${min}~${max}자여야 합니다.`);
-  }
-  return value;
-}
-
-function isHttpUrl(value) {
-  try {
-    const { protocol } = new URL(value);
-    return protocol === 'http:' || protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
-function readUrl(body, errors) {
-  const url = readString(body, 'url', { max: 2048 }, errors);
-  if (url && !isHttpUrl(url)) errors.push('url은 http 또는 https 주소여야 합니다.');
-  return url;
-}
 
 // POST /articles 요청 본문을 검사해 저장할 값만 골라낸다.
 // 클라이언트가 보관하던 분석 결과가 그대로 돌아오므로 길이와 형식을 모두 다시 확인한다.
@@ -66,32 +32,7 @@ function parseSaveBody(body) {
     else article.publishedAt = date;
   }
 
-  const tags = [];
-  if (!Array.isArray(body.tags) || body.tags.length < 1 || body.tags.length > MAX_TAGS) {
-    errors.push(`tags는 1~${MAX_TAGS}개의 배열이어야 합니다.`);
-  } else {
-    body.tags.forEach((raw, i) => {
-      const tagErrors = [];
-      const t = raw && typeof raw === 'object' ? raw : {};
-      const tag = {
-        reason: readString(t, 'reason', { max: 500 }, tagErrors),
-        explanation: readString(t, 'explanation', { max: 2000, optional: true }, tagErrors) ?? '',
-      };
-      if (t.tagId) {
-        // 기존 태그: 이름·설명은 이미 DB에 있으므로 받지 않는다
-        tag.tagId = readString(t, 'tagId', { max: 36 }, tagErrors);
-      } else {
-        tag.name = readString(t, 'name', { max: 50 }, tagErrors);
-        const category = readString(t, 'category', { max: 50, optional: true }, tagErrors);
-        // 고정 분야 목록 밖의 값은 "기타"로 저장한다
-        tag.category = category && !CATEGORIES.includes(category) ? '기타' : category;
-        tag.description = readString(t, 'description', { max: 3000, optional: true }, tagErrors);
-      }
-      errors.push(...tagErrors.map((e) => `tags[${i}].${e}`));
-      tags.push(tag);
-    });
-  }
-
+  const tags = readTags(body, errors);
   return { errors, article, tags };
 }
 

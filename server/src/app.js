@@ -2,6 +2,7 @@ require('dotenv/config');
 const express = require('express');
 const authRouter = require('./routes/auth');
 const articlesRouter = require('./routes/articles');
+const bookScrapsRouter = require('./routes/bookScraps');
 
 const app = express();
 
@@ -12,6 +13,9 @@ app.use('/auth', authRouter);
 
 // 뉴스 스크랩 라우터 (/articles)
 app.use('/articles', articlesRouter);
+
+// 책 스크랩 라우터 (/book-scraps)
+app.use('/book-scraps', bookScrapsRouter);
 
 // 전역 에러 핸들러
 app.use((err, req, res, next) => {

@@ -11,3 +11,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# 책 사진 샘플 (저작권·개인 자료, 커밋하지 않음)
+sample/
