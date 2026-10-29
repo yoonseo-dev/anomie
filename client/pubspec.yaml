@@ -38,6 +38,8 @@ dependencies:
   go_router: ^18.0.2
   google_fonts: ^9.0.0
   flutter_svg: ^2.3.0
+  dio: ^5.11.1
+  flutter_secure_storage: ^11.2.0
 
 dev_dependencies:
   flutter_test:

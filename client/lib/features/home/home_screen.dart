@@ -11,6 +11,7 @@ import '../../shared/models/scrap.dart';
 import '../../shared/widgets/async_states.dart';
 import '../../shared/widgets/content_width.dart';
 import '../../shared/widgets/outlined_card.dart';
+import 'widgets/account_sheet.dart';
 import 'widgets/concept_map_preview_card.dart';
 import 'widgets/home_header.dart';
 import 'widgets/quick_add_card.dart';
@@ -42,8 +43,8 @@ class HomeScreen extends ConsumerWidget {
               bottom: AppSpacing.bottomNavClearance,
             ),
             children: [
-              // TODO: 메뉴 화면 디자인이 나오면 연결.
-              const HomeHeader(),
+              // 메뉴 화면 디자인이 나오기 전까지는 계정 메뉴(로그아웃)만 연다.
+              HomeHeader(onMenuTap: () => AccountSheet.show(context, ref)),
               const SizedBox(height: AppSpacing.sm),
               ContentWidth(
                 child: graph.when(

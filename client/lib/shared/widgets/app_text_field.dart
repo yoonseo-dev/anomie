@@ -22,12 +22,14 @@ class AppTextField extends StatelessWidget {
     this.onSubmitted,
     this.enabled = true,
     this.autofocus = false,
+    this.obscureText = false,
     this.minLines,
     this.maxLines = 1,
   }) : assert(
          controller == null || initialValue == null,
          'controller와 initialValue는 함께 쓸 수 없습니다.',
-       );
+       ),
+       assert(!obscureText || maxLines == 1, '가린 입력은 한 줄이어야 합니다.');
 
   final String? label;
   final String? hintText;
@@ -47,6 +49,9 @@ class AppTextField extends StatelessWidget {
   final bool enabled;
   final bool autofocus;
 
+  /// 비밀번호처럼 글자를 가린다.
+  final bool obscureText;
+
   /// 여러 줄 입력이 필요하면 [maxLines]를 2 이상(또는 null)으로 준다.
   final int? minLines;
   final int? maxLines;
@@ -61,6 +66,9 @@ class AppTextField extends StatelessWidget {
       maxLines: maxLines,
       enabled: enabled,
       autofocus: autofocus,
+      obscureText: obscureText,
+      autocorrect: !obscureText,
+      enableSuggestions: !obscureText,
       keyboardType:
           keyboardType ?? (maxLines == 1 ? null : TextInputType.multiline),
       textInputAction: textInputAction,

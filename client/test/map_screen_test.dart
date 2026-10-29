@@ -9,6 +9,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'helpers/signed_in.dart';
+
 void main() {
   setUpAll(() => GoogleFonts.config.allowRuntimeFetching = false);
 
@@ -16,7 +18,9 @@ void main() {
     tester.view.physicalSize = const Size(375, 812);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(const ProviderScope(child: AnomieApp()));
+    await tester.pumpWidget(
+      ProviderScope(overrides: signedIn(), child: const AnomieApp()),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('마인드맵'));
     await tester.pumpAndSettle();
@@ -85,6 +89,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          ...signedIn(),
           conceptGraphRepositoryProvider.overrideWithValue(_StaticGraph(hub)),
         ],
         child: const AnomieApp(),
