@@ -73,8 +73,9 @@ flutter build web --release          # 결과물: client/build/web
   `POST /book-scraps`(승인한 태그 + 근거 문장). 근거 문장이 OCR 텍스트에 없으면 `excerptVerified: false`("확인 필요").
   스크랩을 저장하면 응답 뒤 서버 프로세스 안에서 관계 제안이 2단계로 돈다 (`relationSuggestService`, 이름만 보고 후보 →
   스크랩 요약·이유·근거 문장으로 근거 확인 → 서버 검증 후 SUGGESTED 저장). 연결 끊기·거절은 삭제가 아니라 REJECTED.
-- **클라이언트는 인증만 서버와 연결됐다 (10-29).** 로그인·회원가입·인증 가드는 실제 API를 쓰고
-  (`features/auth/`, `shared/data/api_client.dart`), 데이터 저장소는 아직 `Fake...Repository`다.
+- **클라이언트는 인증·개념·관계가 서버와 연결됐다 (10-29).** 로그인·회원가입·인증 가드
+  (`features/auth/`, `shared/data/api_client.dart`)와 개념 그래프·개념 저장소(`Api...Repository`)는 실제 API를 쓰고,
+  스크랩·분석 저장소는 아직 `Fake...Repository`다. 연결(`ConceptLink`)은 서버 관계 `id`를 가진다.
   실제 연동은 같은 추상 클래스를 구현하는 Api 버전을 만들어 Provider만 바꾸는 방식으로 한다.
   API 호출은 `apiClientProvider`(토큰 자동 첨부·갱신)를 쓰고, 오류는 `ApiException.from`으로 `{ message }`를 꺼낸다.
   연동 순서는 `doc/plan.md` 8-0 (② 개념·관계 → ③ 기사 → ④ 책).
@@ -124,7 +125,8 @@ flutter build web --release          # 결과물: client/build/web
 - 데이터를 바꾸는 동작(승인·삭제·병합 등) 뒤에는 관련 Provider를 invalidate해서
   홈·마인드맵·상세가 함께 갱신되게 한다. (`features/manage/concept_actions.dart` 참고)
 - 테스트는 `ProviderScope` overrides로 `Fake...Repository(delay: Duration.zero)`를 주입한다.
-  앱 전체를 띄우는 테스트는 `test/helpers/signed_in.dart`의 `...signedIn()`을 넣어 로그인된 상태로 시작한다.
+  앱 전체를 띄우는 테스트는 `...signedIn()`(로그인된 상태)과 `...fakeData()`(가짜 저장소, `test/helpers/`)를 넣는다.
+  기본 Provider는 서버 API를 부르므로 빠뜨리면 테스트가 네트워크로 나간다.
   가짜 저장소의 지연은 0이면 타이머를 만들지 않게 한다. `testWidgets` 본문에서 `Future.delayed(Duration.zero)`를
   pump 없이 기다리면 테스트가 끝나지 않는다 (10-29, `--timeout`으로도 끊기지 않음).
   위젯 테스트에서는 `GoogleFonts.config.allowRuntimeFetching = false`를 설정한다.

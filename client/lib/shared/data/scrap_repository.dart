@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../features/auth/auth_controller.dart';
 import '../models/scrap.dart';
 
 abstract interface class ScrapRepository {
@@ -156,6 +157,8 @@ final scrapRepositoryProvider = Provider<ScrapRepository>(
   (ref) => FakeScrapRepository(),
 );
 
-final recentScrapsProvider = FutureProvider<List<Scrap>>(
-  (ref) => ref.watch(scrapRepositoryProvider).fetchRecent(),
-);
+/// 로그인한 사용자가 바뀌면 다시 불러온다.
+final recentScrapsProvider = FutureProvider<List<Scrap>>((ref) {
+  ref.watch(currentUserIdProvider);
+  return ref.watch(scrapRepositoryProvider).fetchRecent();
+});

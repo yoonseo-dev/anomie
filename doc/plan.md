@@ -352,6 +352,14 @@ Figma 시안을 바탕으로 `client/`에 화면을 구현했다. 데이터는 �
   - 로그인 상태(`Session`)는 `flutter_secure_storage`에 보관, 서버 주소는 `AppConfig.apiBaseUrl` (`--dart-define=API_BASE_URL`, 기본 localhost:3000 / 안드로이드 에뮬레이터 10.0.2.2:3000)
   - 실제 서버 + 웹 빌드로 확인: 회원가입 → 홈, 새로고침 후 로그인 유지, 로그아웃(Refresh 토큰 폐기 확인), 틀린 비밀번호 문구. 웹 빌드는 서버에 `CORS_ORIGINS`가 필요
   - 아직 데이터는 가짜 저장소 (②부터 교체). 로그아웃해도 가짜 데이터는 그대로라 ②에서 사용자별로 다시 불러오게 한다
+- ✅ ② 개념·관계 (10-29)
+  - 기본 저장소를 Api로 교체: `ApiConceptGraphRepository`(`GET /concepts/graph`, 관계 `PATCH /relations/:id`, 개념 삭제·병합), `ApiConceptRepository`(`GET·PATCH /concepts/:id`). 가짜 저장소는 테스트용(`test/helpers/fake_data.dart`)
+  - `ConceptLink.id`에 서버 관계 id를 담고, 승인·거절·되돌리기·이유 수정은 연결 객체로 보낸다. 거절·연결 끊기는 서버에서 REJECTED, 되돌리기는 이전 상태로 PATCH
+  - 개념 상세의 설명·스크랩은 `GET /concepts/:id` 한 번으로 (`ConceptRepository.fetchContent`). 책은 근거 문장(`Scrap.excerpts`)을 따옴표로 표시
+  - 데이터 Provider는 `currentUserIdProvider`를 watch → 로그아웃·다른 계정 로그인 때 다시 불러옴
+  - 그래프는 지금은 전체를 받아 클라이언트가 중심 노드·미리보기를 계산한다 (서버의 `?center=`·`/preview`는 개념이 많아지면 사용)
+  - 실제 서버 + 웹 빌드로 확인 (임시 데이터): 홈 그래프·새 제안 수, 관리 탭 승인·거절·되돌리기(DB 상태까지), 개념 상세의 책 근거 문장
+  - 홈의 "최근 스크랩"은 아직 가짜 저장소 (③에서 교체)
 - 마인드맵 점선 탭 → 승인/거절, 태그 승인 화면의 근거 문장
 - 실제 카메라 촬영, 공유하기 메뉴로 URL 받기(이후)
 - 확인 필요: 웹 빌드(`flutter build web`) 완료 여부, 기본 병렬 `flutter test`가 중간에 멈추는 문제

@@ -1,20 +1,24 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../features/auth/auth_controller.dart';
 import '../models/concept_graph.dart';
+import 'api_client.dart';
 
 abstract interface class ConceptGraphRepository {
   Future<ConceptGraph> fetchGraph();
 
   /// AI 제안 연결을 확정한다.
-  Future<void> approveLink(String a, String b);
+  Future<void> approveLink(ConceptLink link);
 
   /// 연결을 지운다 (제안 거절, 연결 끊기). 지운 연결과 원래 자리를 돌려준다.
-  Future<(ConceptLink, int)?> removeLink(String a, String b);
+  /// 서버에서는 지우지 않고 '거절'로 남겨 같은 쌍을 다시 제안하지 않는다.
+  Future<(ConceptLink, int)?> removeLink(ConceptLink link);
 
-  /// [removeLink]로 지운 연결을 원래 자리에 되돌린다.
+  /// [removeLink]로 지운 연결을 원래 자리·상태로 되돌린다.
   Future<void> restoreLink(ConceptLink link, int index);
 
-  Future<void> updateLinkReason(String a, String b, String reason);
+  Future<void> updateLinkReason(ConceptLink link, String reason);
 
   /// 개념과 그 개념의 연결을 모두 지운다.
   Future<void> deleteConcept(String id);
@@ -43,18 +47,18 @@ class FakeConceptGraphRepository implements ConceptGraphRepository {
       _links.indexWhere((l) => l.connects(a, b));
 
   @override
-  Future<void> approveLink(String a, String b) async {
+  Future<void> approveLink(ConceptLink link) async {
     await Future<void>.delayed(delay);
-    final i = _indexOf(a, b);
+    final i = _indexOf(link.sourceId, link.targetId);
     if (i >= 0) {
       _links[i] = _links[i].copyWith(status: ConceptLinkStatus.confirmed);
     }
   }
 
   @override
-  Future<(ConceptLink, int)?> removeLink(String a, String b) async {
+  Future<(ConceptLink, int)?> removeLink(ConceptLink link) async {
     await Future<void>.delayed(delay);
-    final i = _indexOf(a, b);
+    final i = _indexOf(link.sourceId, link.targetId);
     if (i < 0) return null;
     return (_links.removeAt(i), i);
   }
@@ -67,9 +71,9 @@ class FakeConceptGraphRepository implements ConceptGraphRepository {
   }
 
   @override
-  Future<void> updateLinkReason(String a, String b, String reason) async {
+  Future<void> updateLinkReason(ConceptLink link, String reason) async {
     await Future<void>.delayed(delay);
-    final i = _indexOf(a, b);
+    final i = _indexOf(link.sourceId, link.targetId);
     if (i >= 0) _links[i] = _links[i].copyWith(reason: reason);
   }
 
@@ -272,10 +276,108 @@ class FakeConceptGraphRepository implements ConceptGraphRepository {
   ];
 }
 
+/// 서버 API 저장소 (`/concepts`, `/relations`).
+class ApiConceptGraphRepository implements ConceptGraphRepository {
+  ApiConceptGraphRepository(this._dio);
+
+  final Dio _dio;
+
+  Future<T?> _call<T>(Future<Response<T>> Function() request) async {
+    try {
+      return (await request()).data;
+    } catch (e) {
+      throw ApiException.from(e);
+    }
+  }
+
+  static ConceptLinkStatus _status(String value) => value == 'APPROVED'
+      ? ConceptLinkStatus.confirmed
+      : ConceptLinkStatus.suggested;
+
+  static String _serverStatus(ConceptLinkStatus status) =>
+      status == ConceptLinkStatus.confirmed ? 'APPROVED' : 'SUGGESTED';
+
+  /// `GET /concepts/graph` 응답을 그래프로 바꾼다. 거절한 관계는 서버가 빼고 보낸다.
+  static ConceptGraph graphFromJson(Map<String, dynamic> json) => ConceptGraph(
+    nodes: [
+      for (final n in (json['nodes'] as List).cast<Map<String, dynamic>>())
+        ConceptNode(
+          id: n['id'] as String,
+          name: n['name'] as String,
+          scrapCount: n['scrapCount'] as int,
+          createdAt: DateTime.parse(n['createdAt'] as String).toLocal(),
+        ),
+    ],
+    links: [
+      for (final l in (json['links'] as List).cast<Map<String, dynamic>>())
+        ConceptLink(
+          l['tagAId'] as String,
+          l['tagBId'] as String,
+          id: l['id'] as String,
+          status: _status(l['status'] as String),
+          reason: l['reason'] as String?,
+        ),
+    ],
+  );
+
+  String _relationPath(ConceptLink link) {
+    final id = link.id;
+    if (id == null) throw StateError('서버 관계 id가 없는 연결입니다.');
+    return '/relations/$id';
+  }
+
+  Future<void> _patch(ConceptLink link, Map<String, dynamic> body) {
+    // id가 없는 건 프로그래밍 오류라 ApiException으로 감싸지 않고 바로 던진다
+    final path = _relationPath(link);
+    return _call(() => _dio.patch<Map<String, dynamic>>(path, data: body));
+  }
+
+  @override
+  Future<ConceptGraph> fetchGraph() async => graphFromJson(
+    (await _call(() => _dio.get<Map<String, dynamic>>('/concepts/graph')))!,
+  );
+
+  @override
+  Future<void> approveLink(ConceptLink link) =>
+      _patch(link, {'status': 'APPROVED'});
+
+  @override
+  Future<(ConceptLink, int)?> removeLink(ConceptLink link) async {
+    await _patch(link, {'status': 'REJECTED'});
+    // 순서는 서버가 정하므로 자리 값은 쓰지 않는다.
+    return (link, 0);
+  }
+
+  @override
+  Future<void> restoreLink(ConceptLink link, int index) =>
+      _patch(link, {'status': _serverStatus(link.status)});
+
+  @override
+  Future<void> updateLinkReason(ConceptLink link, String reason) =>
+      _patch(link, {'reason': reason});
+
+  @override
+  Future<void> deleteConcept(String id) =>
+      _call(() => _dio.delete<void>('/concepts/$id'));
+
+  @override
+  Future<void> mergeConcepts({
+    required String fromId,
+    required String intoId,
+  }) => _call(
+    () => _dio.post<Map<String, dynamic>>(
+      '/concepts/$fromId/merge',
+      data: {'intoId': intoId},
+    ),
+  );
+}
+
 final conceptGraphRepositoryProvider = Provider<ConceptGraphRepository>(
-  (ref) => FakeConceptGraphRepository(),
+  (ref) => ApiConceptGraphRepository(ref.watch(apiClientProvider)),
 );
 
-final conceptGraphProvider = FutureProvider<ConceptGraph>(
-  (ref) => ref.watch(conceptGraphRepositoryProvider).fetchGraph(),
-);
+/// 내 개념·연결 전체. 로그인한 사용자가 바뀌면 다시 불러온다.
+final conceptGraphProvider = FutureProvider<ConceptGraph>((ref) {
+  ref.watch(currentUserIdProvider);
+  return ref.watch(conceptGraphRepositoryProvider).fetchGraph();
+});

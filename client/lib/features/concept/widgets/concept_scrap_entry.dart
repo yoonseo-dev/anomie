@@ -22,6 +22,8 @@ class ConceptScrapEntry extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final explanation = scrap.explanations[conceptName];
+    // 책에서 이 개념을 뽑은 근거 문장 (doc/plan.md 8-3)
+    final excerpt = scrap.excerpts[conceptName];
 
     return DecoratedBox(
       decoration: const BoxDecoration(
@@ -50,6 +52,10 @@ class ConceptScrapEntry extends StatelessWidget {
               ),
               const SizedBox(height: AppSpacing.xs),
               Text(scrap.title, style: AppTypography.articleTitle),
+              if (excerpt != null) ...[
+                const SizedBox(height: AppSpacing.xs),
+                Text('“$excerpt”', style: AppTypography.bodySmall),
+              ],
               if (explanation != null) ...[
                 const SizedBox(height: AppSpacing.xs),
                 DecoratedBox(

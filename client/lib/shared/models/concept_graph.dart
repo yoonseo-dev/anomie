@@ -37,9 +37,14 @@ class ConceptLink {
   const ConceptLink(
     this.sourceId,
     this.targetId, {
+    this.id,
     this.status = ConceptLinkStatus.confirmed,
     this.reason,
   });
+
+  /// 서버의 관계 id (CONCEPT_RELATION). 승인·거절·이유 수정을 이 값으로 보낸다.
+  /// 가짜 저장소에서는 없다 (두 개념 id로 찾는다).
+  final String? id;
 
   final String sourceId;
   final String targetId;
@@ -66,6 +71,7 @@ class ConceptLink {
   }) => ConceptLink(
     sourceId ?? this.sourceId,
     targetId ?? this.targetId,
+    id: id,
     status: status ?? this.status,
     reason: reason ?? this.reason,
   );

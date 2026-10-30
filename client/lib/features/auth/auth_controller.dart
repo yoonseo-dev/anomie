@@ -87,3 +87,9 @@ class AuthController extends AsyncNotifier<Session?> {
 final authControllerProvider = AsyncNotifierProvider<AuthController, Session?>(
   AuthController.new,
 );
+
+/// 로그인한 사용자 id. 데이터 Provider가 이 값을 watch해서, 로그아웃·다른 계정 로그인 때
+/// 이전 사용자의 데이터를 버리고 다시 불러온다. (토큰 갱신만으로는 바뀌지 않는다.)
+final currentUserIdProvider = Provider<String?>(
+  (ref) => ref.watch(authControllerProvider.select((s) => s.value?.user.id)),
+);

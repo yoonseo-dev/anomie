@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'helpers/fake_data.dart';
 import 'helpers/signed_in.dart';
 
 void main() {
@@ -19,7 +20,10 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
-      ProviderScope(overrides: signedIn(), child: const AnomieApp()),
+      ProviderScope(
+        overrides: [...signedIn(), ...fakeData()],
+        child: const AnomieApp(),
+      ),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('마인드맵'));
@@ -90,7 +94,7 @@ void main() {
       ProviderScope(
         overrides: [
           ...signedIn(),
-          conceptGraphRepositoryProvider.overrideWithValue(_StaticGraph(hub)),
+          ...fakeData(graph: _StaticGraph(hub)),
         ],
         child: const AnomieApp(),
       ),

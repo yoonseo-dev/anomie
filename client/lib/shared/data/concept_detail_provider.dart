@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/concept_detail.dart';
 import 'concept_graph_repository.dart';
 import 'concept_repository.dart';
-import 'scrap_repository.dart';
 
 /// 개념 id로 상세 정보를 모은다. 개념이 없으면 null.
 ///
@@ -15,10 +14,10 @@ final conceptDetailProvider = FutureProvider.autoDispose
       final concept = graph.node(conceptId);
       if (concept == null) return null;
 
-      final (scraps, description) = await (
-        ref.watch(scrapRepositoryProvider).fetchByConcept(concept.name),
-        ref.watch(conceptRepositoryProvider).fetchDescription(conceptId),
-      ).wait;
+      // 설명과 이 개념이 붙은 스크랩 (서버는 GET /concepts/:id 한 번으로 준다)
+      final content = await ref
+          .watch(conceptRepositoryProvider)
+          .fetchContent(concept);
 
       final links = [
         for (final link in graph.linksOf(conceptId))
@@ -34,8 +33,8 @@ final conceptDetailProvider = FutureProvider.autoDispose
       return ConceptDetail(
         concept: concept,
         graph: graph,
-        description: description,
-        scraps: scraps,
+        description: content.description,
+        scraps: content.scraps,
         links: ordered,
       );
     });

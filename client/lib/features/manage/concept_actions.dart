@@ -24,13 +24,13 @@ class ConceptActions {
   }
 
   Future<void> approve(ConceptLink link) async {
-    await _graph.approveLink(link.sourceId, link.targetId);
+    await _graph.approveLink(link);
     _refresh();
   }
 
   /// 제안 거절과 연결 끊기. 되돌리기에 쓸 값을 돌려준다.
   Future<(ConceptLink, int)?> remove(ConceptLink link) async {
-    final removed = await _graph.removeLink(link.sourceId, link.targetId);
+    final removed = await _graph.removeLink(link);
     _refresh();
     return removed;
   }
@@ -41,7 +41,7 @@ class ConceptActions {
   }
 
   Future<void> updateReason(ConceptLink link, String reason) async {
-    await _graph.updateLinkReason(link.sourceId, link.targetId, reason);
+    await _graph.updateLinkReason(link, reason);
     _refresh();
   }
 

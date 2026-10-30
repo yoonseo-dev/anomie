@@ -19,6 +19,7 @@ class Scrap {
     String? originDetail,
     String? sourceName,
     this.explanations = const {},
+    this.excerpts = const {},
   }) : originDetail = originDetail ?? origin,
        sourceName = sourceName ?? origin;
 
@@ -42,9 +43,13 @@ class Scrap {
   /// 개념 이름 → 이 글에서 그 개념을 붙인 이유 (서버 ArticleTag.explanation).
   final Map<String, String> explanations;
 
+  /// 책: 개념 이름 → 그 개념을 뽑은 근거 문장 (서버 BookScrapTag.excerpt). 기사는 비어 있다.
+  final Map<String, String> excerpts;
+
   Scrap copyWith({
     List<String>? conceptNames,
     Map<String, String>? explanations,
+    Map<String, String>? excerpts,
   }) => Scrap(
     id: id,
     source: source,
@@ -55,6 +60,7 @@ class Scrap {
     savedOn: savedOn,
     conceptNames: conceptNames ?? this.conceptNames,
     explanations: explanations ?? this.explanations,
+    excerpts: excerpts ?? this.excerpts,
   );
 
   /// 목록 오른쪽에 보이는 태그 요약 ("아노미 외 1").

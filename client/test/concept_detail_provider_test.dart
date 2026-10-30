@@ -23,7 +23,7 @@ void main() {
       delay: Duration.zero,
       now: () => DateTime(2026, 10, 12),
     );
-    concepts = FakeConceptRepository(delay: Duration.zero);
+    concepts = FakeConceptRepository(delay: Duration.zero, scraps: scraps);
     container = ProviderContainer(
       overrides: [
         scrapRepositoryProvider.overrideWithValue(scraps),

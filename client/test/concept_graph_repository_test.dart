@@ -12,14 +12,18 @@ void main() {
       g.links.where((l) => l.connects(a, b)).firstOrNull;
 
   test('제안을 승인하면 확정된 연결이 된다', () async {
-    await repo.approveLink('alienation', 'anomie'); // 방향은 상관없다.
+    await repo.approveLink(
+      const ConceptLink('alienation', 'anomie'),
+    ); // 방향은 상관없다.
     final g = await repo.fetchGraph();
     expect(linkOf(g, 'anomie', 'alienation')?.isSuggested, isFalse);
   });
 
   test('지운 연결은 원래 자리로 되돌릴 수 있다', () async {
     final before = (await repo.fetchGraph()).links;
-    final removed = await repo.removeLink('anomie', 'alienation');
+    final removed = await repo.removeLink(
+      const ConceptLink('anomie', 'alienation'),
+    );
     expect(removed, isNotNull);
     expect(linkOf(await repo.fetchGraph(), 'anomie', 'alienation'), isNull);
 
@@ -32,7 +36,7 @@ void main() {
   });
 
   test('연결 이유를 고친다', () async {
-    await repo.updateLinkReason('anomie', 'norm', '새 이유');
+    await repo.updateLinkReason(const ConceptLink('anomie', 'norm'), '새 이유');
     expect(linkOf(await repo.fetchGraph(), 'anomie', 'norm')?.reason, '새 이유');
   });
 

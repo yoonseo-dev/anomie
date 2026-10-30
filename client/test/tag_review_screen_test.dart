@@ -1,13 +1,12 @@
 import 'package:client/app.dart';
 import 'package:client/features/scrap/new_scrap_screen.dart';
 import 'package:client/features/scrap/tag_review_screen.dart';
-import 'package:client/shared/data/scrap_analysis_repository.dart';
-import 'package:client/shared/data/scrap_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'helpers/fake_data.dart';
 import 'helpers/signed_in.dart';
 
 void main() {
@@ -23,15 +22,7 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [
-          ...signedIn(),
-          scrapAnalysisRepositoryProvider.overrideWithValue(
-            const FakeScrapAnalysisRepository(delay: Duration.zero),
-          ),
-          scrapRepositoryProvider.overrideWithValue(
-            FakeScrapRepository(delay: Duration.zero),
-          ),
-        ],
+        overrides: [...signedIn(), ...fakeData()],
         child: const AnomieApp(),
       ),
     );

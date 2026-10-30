@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'helpers/fake_data.dart';
 import 'helpers/signed_in.dart';
 
 void main() {
@@ -25,8 +26,10 @@ void main() {
     container = ProviderContainer(
       overrides: [
         ...signedIn(),
-        scrapAnalysisRepositoryProvider.overrideWithValue(
-          const FakeScrapAnalysisRepository(delay: Duration(milliseconds: 50)),
+        ...fakeData(
+          analysis: const FakeScrapAnalysisRepository(
+            delay: Duration(milliseconds: 50),
+          ),
         ),
       ],
     );

@@ -1,21 +1,119 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/concept_detail.dart';
+import '../models/concept_graph.dart';
+import '../models/scrap.dart';
+import 'api_client.dart';
+import 'scrap_repository.dart';
+
+/// 개념 상세에 필요한 것 중 그래프에 없는 부분: 설명과, 이 개념이 붙은 스크랩.
+class ConceptContent {
+  const ConceptContent({this.description, this.scraps = const []});
+
+  final ConceptDescription? description;
+
+  /// 최근에 저장한 것부터.
+  final List<Scrap> scraps;
+}
 
 abstract interface class ConceptRepository {
-  Future<ConceptDescription?> fetchDescription(String conceptId);
+  Future<ConceptContent> fetchContent(ConceptNode concept);
 
   Future<void> updateDescription(String conceptId, String text);
 
-  /// 태그를 삭제하거나 병합할 때 설명도 지운다.
+  /// 태그를 삭제하거나 병합할 때 설명도 지운다 (서버는 개념과 함께 지우므로 할 일이 없다).
   Future<void> deleteDescription(String conceptId);
 }
 
+/// 서버 API 저장소 (`GET·PATCH /concepts/:id`).
+class ApiConceptRepository implements ConceptRepository {
+  ApiConceptRepository(this._dio);
+
+  final Dio _dio;
+
+  /// "10월 8일". 상세 화면 출처 줄에 쓴다.
+  static String _date(DateTime d) => '${d.month}월 ${d.day}일';
+
+  /// `GET /concepts/:id`의 scraps 한 건. 책은 서버가 제목 자리에 요약을 넣어 준다.
+  static Scrap scrapFromJson(Map<String, dynamic> s, String conceptName) {
+    final isBook = s['kind'] == 'book';
+    final source = (s['source'] as String?) ?? '';
+    final savedOn = DateTime.parse(s['createdAt'] as String).toLocal();
+    final page = s['page'] as int?;
+    final author = s['author'] as String?;
+    return Scrap(
+      id: s['id'] as String,
+      source: isBook ? ScrapSource.book : ScrapSource.article,
+      title: s['title'] as String,
+      origin: isBook ? [source, if (page != null) '$page쪽'].join(' ') : source,
+      originDetail: isBook
+          ? [source, ?author, if (page != null) '$page쪽'].join(' · ')
+          : [if (source.isNotEmpty) source, _date(savedOn)].join(' · '),
+      sourceName: source,
+      savedOn: savedOn,
+      conceptNames: [conceptName],
+      explanations: {
+        conceptName: switch (s['explanation']) {
+          final String e when e.isNotEmpty => e,
+          _ => s['reason'] as String,
+        },
+      },
+      excerpts: {if (s['excerpt'] case final String e) conceptName: e},
+    );
+  }
+
+  @override
+  Future<ConceptContent> fetchContent(ConceptNode concept) async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        '/concepts/${concept.id}',
+      );
+      final data = res.data!;
+      final text = data['description'] as String?;
+      return ConceptContent(
+        description: text == null
+            ? null
+            : ConceptDescription(
+                text: text,
+                byAi: data['descriptionByAi'] as bool,
+              ),
+        scraps: [
+          for (final s in (data['scraps'] as List).cast<Map<String, dynamic>>())
+            scrapFromJson(s, concept.name),
+        ],
+      );
+    } catch (e) {
+      throw ApiException.from(e);
+    }
+  }
+
+  @override
+  Future<void> updateDescription(String conceptId, String text) async {
+    try {
+      await _dio.patch<void>(
+        '/concepts/$conceptId',
+        data: {'description': text},
+      );
+    } catch (e) {
+      throw ApiException.from(e);
+    }
+  }
+
+  @override
+  Future<void> deleteDescription(String conceptId) async {}
+}
+
 /// 서버 연결 전까지 쓰는 가짜 설명 저장소. 수정한 내용은 메모리에만 남는다.
+/// 스크랩은 [scraps] 저장소에서 개념 이름으로 찾는다 (없으면 비어 있다).
 class FakeConceptRepository implements ConceptRepository {
-  FakeConceptRepository({this.delay = const Duration(milliseconds: 200)});
+  FakeConceptRepository({
+    this.delay = const Duration(milliseconds: 200),
+    this.scraps,
+  });
 
   final Duration delay;
+  final ScrapRepository? scraps;
 
   final Map<String, ConceptDescription> _descriptions = {
     for (final MapEntry(:key, :value) in _seed.entries)
@@ -50,9 +148,12 @@ class FakeConceptRepository implements ConceptRepository {
   };
 
   @override
-  Future<ConceptDescription?> fetchDescription(String conceptId) async {
+  Future<ConceptContent> fetchContent(ConceptNode concept) async {
     await Future<void>.delayed(delay);
-    return _descriptions[conceptId];
+    return ConceptContent(
+      description: _descriptions[concept.id],
+      scraps: await scraps?.fetchByConcept(concept.name) ?? const [],
+    );
   }
 
   @override
@@ -69,5 +170,5 @@ class FakeConceptRepository implements ConceptRepository {
 }
 
 final conceptRepositoryProvider = Provider<ConceptRepository>(
-  (ref) => FakeConceptRepository(),
+  (ref) => ApiConceptRepository(ref.watch(apiClientProvider)),
 );
