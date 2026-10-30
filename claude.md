@@ -73,12 +73,13 @@ flutter build web --release          # 결과물: client/build/web
   `POST /book-scraps`(승인한 태그 + 근거 문장). 근거 문장이 OCR 텍스트에 없으면 `excerptVerified: false`("확인 필요").
   스크랩을 저장하면 응답 뒤 서버 프로세스 안에서 관계 제안이 2단계로 돈다 (`relationSuggestService`, 이름만 보고 후보 →
   스크랩 요약·이유·근거 문장으로 근거 확인 → 서버 검증 후 SUGGESTED 저장). 연결 끊기·거절은 삭제가 아니라 REJECTED.
-- **클라이언트는 인증·개념·관계가 서버와 연결됐다 (10-29).** 로그인·회원가입·인증 가드
-  (`features/auth/`, `shared/data/api_client.dart`)와 개념 그래프·개념 저장소(`Api...Repository`)는 실제 API를 쓰고,
-  스크랩·분석 저장소는 아직 `Fake...Repository`다. 연결(`ConceptLink`)은 서버 관계 `id`를 가진다.
+- **클라이언트는 인증·개념·관계·기사 스크랩이 서버와 연결됐다 (10-31).** 로그인·회원가입·인증 가드
+  (`features/auth/`, `shared/data/api_client.dart`)와 개념 그래프·개념·스크랩·분석 저장소(`Api...Repository`)는 실제 API를 쓴다.
+  책 분석만 아직 막혀 있다 (④). 분석 결과는 서버에 보관되지 않으므로 앱이 `ScrapAnalysis.draft`로 들고 있다가
+  승인한 태그(`ApprovedTag`)와 함께 저장한다. 연결(`ConceptLink`)은 서버 관계 `id`를 가진다.
   실제 연동은 같은 추상 클래스를 구현하는 Api 버전을 만들어 Provider만 바꾸는 방식으로 한다.
   API 호출은 `apiClientProvider`(토큰 자동 첨부·갱신)를 쓰고, 오류는 `ApiException.from`으로 `{ message }`를 꺼낸다.
-  연동 순서는 `doc/plan.md` 8-0 (② 개념·관계 → ③ 기사 → ④ 책).
+  연동 순서는 `doc/plan.md` 8-0 (② 개념·관계 → ③ 기사 → ④ 책, ③까지 완료).
 - 서버 API: `/auth/signup`, `/auth/login`(Access 15분 + Refresh 30일), `/auth/refresh`(Refresh 교체), `/auth/logout`,
   `/articles`·`/book-scraps` (GET 목록·상세, POST /analyze, POST, DELETE),
   `/concepts` (GET 목록, GET /graph[?center=], GET /graph/preview, GET·PATCH·DELETE /:id, POST /:id/merge),
