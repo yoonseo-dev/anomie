@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/router/app_routes.dart';
 import '../../core/theme/app_dimens.dart';
 import '../../core/theme/app_typography.dart';
+import '../../shared/data/api_client.dart';
 import '../../shared/widgets/content_width.dart';
 import '../../shared/widgets/corner_marks.dart';
 import '../../shared/widgets/pill_button.dart';
@@ -69,10 +70,11 @@ class TagReviewScreen extends ConsumerWidget {
         ..showSnackBar(const SnackBar(content: Text('스크랩을 저장했어요')));
       // 새 스크랩·태그 확인 화면을 모두 닫고 홈으로 간다.
       router.go(AppRoutes.home);
-    } catch (_) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('저장하지 못했어요. 잠시 뒤 다시 시도해 주세요')),
-      );
+    } catch (e) {
+      final message = e is ApiException
+          ? e.message
+          : '저장하지 못했어요. 잠시 뒤 다시 시도해 주세요';
+      messenger.showSnackBar(SnackBar(content: Text(message)));
     }
   }
 

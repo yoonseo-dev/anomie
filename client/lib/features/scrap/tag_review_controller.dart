@@ -133,28 +133,38 @@ class TagReviewController extends Notifier<TagReviewState> {
 
   void restore(int index) => _update(index, (d) => d.copyWith(removed: false));
 
+  /// 저장할 태그. 같은 이름은 처음 것만 남긴다.
+  /// AI가 쓴 설명·분야는 제안 그대로의 새 태그일 때만 보낸다. 내 개념으로 바꿨으면 서버가 같은
+  /// 이름의 내 개념에 붙이고(이름은 사용자 안에서 유일), 이름을 고쳤으면 원래 설명은 다른 개념의 것이다.
+  List<ApprovedTag> get approvedTags {
+    final seen = <String>{};
+    return [
+      for (final d in state.kept)
+        if (seen.add(d.finalName))
+          ApprovedTag(
+            name: d.finalName,
+            reason: d.suggestion.reason,
+            explanation: d.suggestion.explanation,
+            category: d.showsAsNew ? d.suggestion.category : null,
+            description: d.showsAsNew && d.name == d.suggestion.name
+                ? d.suggestion.description
+                : null,
+          ),
+    ];
+  }
+
   /// 남은 태그로 스크랩을 저장한다. 같은 이름은 한 번만 저장한다.
+  /// 실패하면 [ApiException]을 던진다 (화면이 문구를 보여 준다).
   Future<bool> save() async {
     final analysis = state.analysis;
     if (!state.canSave || analysis == null) return false;
     state = state.copyWith(isSaving: true);
     try {
-      await ref
-          .read(scrapRepositoryProvider)
-          .save(
-            source: analysis.source,
-            title: analysis.title,
-            // 홈 목록에는 짧게, 상세 화면에는 날짜·저자까지 보여 준다.
-            origin: analysis.sourceName,
-            originDetail: analysis.origin,
-            sourceName: analysis.sourceName,
-            conceptNames: {for (final d in state.kept) d.finalName}.toList(),
-            explanations: {
-              for (final d in state.kept) d.finalName: d.suggestion.reason,
-            },
-          );
+      await ref.read(scrapRepositoryProvider).save(analysis, approvedTags);
+      // 새 개념이 생겼을 수 있다. 관계 제안은 서버가 저장 뒤에 따로 만든다.
       ref
         ..invalidate(recentScrapsProvider)
+        ..invalidate(conceptGraphProvider)
         ..invalidate(conceptDetailProvider);
       return true;
     } finally {

@@ -1,6 +1,3 @@
-import 'dart:convert';
-import 'dart:typed_data';
-
 import 'package:client/shared/data/api_client.dart';
 import 'package:client/shared/data/concept_graph_repository.dart';
 import 'package:client/shared/data/concept_repository.dart';
@@ -9,45 +6,15 @@ import 'package:client/shared/models/scrap.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// 요청 한 건을 비교하기 쉬운 한 줄로 ("PATCH /relations/r1 {"status":"APPROVED"}").
-/// 맵은 ==로 내용 비교가 안 되므로 JSON 문자열로 바꿔 비교한다.
-String _req(String method, String path, [Object? body]) =>
-    '$method $path${body == null ? '' : ' ${jsonEncode(body)}'}';
-
-/// 보낸 요청을 기록하고, "METHOD /path"마다 정해 둔 응답을 돌려주는 가짜 HTTP.
-class _FakeServer implements HttpClientAdapter {
-  final requests = <String>[];
-  final responses = <String, (int, Object?)>{};
-
-  @override
-  Future<ResponseBody> fetch(
-    RequestOptions options,
-    Stream<Uint8List>? requestStream,
-    Future<void>? cancelFuture,
-  ) async {
-    requests.add(_req(options.method, options.path, options.data));
-    final (status, body) =
-        responses['${options.method} ${options.path}'] ?? (204, null);
-    return ResponseBody.fromString(
-      body == null ? '' : jsonEncode(body),
-      status,
-      headers: {
-        Headers.contentTypeHeader: [Headers.jsonContentType],
-      },
-    );
-  }
-
-  @override
-  void close({bool force = false}) {}
-}
+import 'helpers/fake_server.dart';
 
 void main() {
-  late _FakeServer server;
+  late FakeServer server;
   late Dio dio;
 
   setUp(() {
-    server = _FakeServer();
-    dio = Dio(BaseOptions(baseUrl: 'http://test'))..httpClientAdapter = server;
+    server = FakeServer();
+    dio = server.dio();
   });
 
   group('ApiConceptGraphRepository', () {
@@ -122,13 +89,11 @@ void main() {
       await repo.updateLinkReason(confirmed, '새 이유');
 
       expect(server.requests, [
-        _req('PATCH', '/relations/r1', {'status': 'APPROVED'}),
-        _req('PATCH', '/relations/r2', {
-          'status': 'REJECTED',
-        }), // 지우지 않고 거절로 남긴다
-        _req('PATCH', '/relations/r2', {'status': 'APPROVED'}), // 원래 상태로
-        _req('PATCH', '/relations/r1', {'status': 'SUGGESTED'}),
-        _req('PATCH', '/relations/r2', {'reason': '새 이유'}),
+        req('PATCH', '/relations/r1', {'status': 'APPROVED'}),
+        req('PATCH', '/relations/r2', {'status': 'REJECTED'}), // 지우지 않고 거절로 남긴다
+        req('PATCH', '/relations/r2', {'status': 'APPROVED'}), // 원래 상태로
+        req('PATCH', '/relations/r1', {'status': 'SUGGESTED'}),
+        req('PATCH', '/relations/r2', {'reason': '새 이유'}),
       ]);
     });
 
@@ -139,8 +104,8 @@ void main() {
       await repo.mergeConcepts(fromId: 'b', intoId: 'c');
 
       expect(server.requests, [
-        _req('DELETE', '/concepts/a'),
-        _req('POST', '/concepts/b/merge', {'intoId': 'c'}),
+        req('DELETE', '/concepts/a'),
+        req('POST', '/concepts/b/merge', {'intoId': 'c'}),
       ]);
     });
 
@@ -233,7 +198,7 @@ void main() {
 
       expect(
         server.requests.last,
-        _req('PATCH', '/concepts/t1', {'description': '내가 쓴 설명'}),
+        req('PATCH', '/concepts/t1', {'description': '내가 쓴 설명'}),
       );
     });
   });

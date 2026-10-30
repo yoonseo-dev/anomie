@@ -1,7 +1,9 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/scrap.dart';
 import '../models/scrap_analysis.dart';
+import 'api_client.dart';
 
 abstract interface class ScrapAnalysisRepository {
   Future<ScrapAnalysis> analyzeArticle(String url);
@@ -72,8 +74,80 @@ class FakeScrapAnalysisRepository implements ScrapAnalysisRepository {
   }
 }
 
+/// 서버 API 분석 (`POST /articles/analyze`). 서버는 분석만 하고 저장하지 않는다.
+class ApiScrapAnalysisRepository implements ScrapAnalysisRepository {
+  ApiScrapAnalysisRepository(this._dio);
+
+  final Dio _dio;
+
+  static String _date(DateTime d) => '${d.month}월 ${d.day}일';
+
+  /// 분석 응답의 태그 한 건. similarExisting은 [{id, name}]이고 화면에는 이름만 쓴다.
+  static SuggestedTag tagFromJson(Map<String, dynamic> t) => SuggestedTag(
+    name: t['name'] as String,
+    reason: t['reason'] as String,
+    isNew: t['isNew'] as bool,
+    similarExisting: [
+      for (final s in (t['similarExisting'] as List? ?? const []))
+        (s as Map<String, dynamic>)['name'] as String,
+    ],
+    explanation: (t['explanation'] as String?) ?? '',
+    category: t['category'] as String?,
+    description: t['description'] as String?,
+  );
+
+  /// `POST /articles/analyze` 응답. tags 외의 값은 저장할 때 그대로 돌려보낸다.
+  static ScrapAnalysis articleFromJson(Map<String, dynamic> json) {
+    final url = json['url'] as String;
+    final publisher =
+        (json['publisher'] as String?) ??
+        (Uri.tryParse(url)?.host ?? '').replaceFirst(RegExp(r'^www\.'), '');
+    final published = switch (json['publishedAt']) {
+      final String s => DateTime.parse(s).toLocal(),
+      _ => null,
+    };
+    return ScrapAnalysis(
+      source: ScrapSource.article,
+      title: json['title'] as String,
+      origin: [
+        if (publisher.isNotEmpty) publisher,
+        if (published != null) _date(published),
+      ].join(' · '),
+      sourceName: publisher,
+      tags: [
+        for (final t in (json['tags'] as List).cast<Map<String, dynamic>>())
+          tagFromJson(t),
+      ],
+      draft: {...json}..remove('tags'),
+    );
+  }
+
+  @override
+  Future<ScrapAnalysis> analyzeArticle(String url) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/articles/analyze',
+        data: {'url': url},
+      );
+      return articleFromJson(res.data!);
+    } catch (e) {
+      throw ApiException.from(e);
+    }
+  }
+
+  // TODO(④ 책 스크랩): 실제 카메라·갤러리 사진을 multipart로 POST /book-scraps/analyze
+  @override
+  Future<ScrapAnalysis> analyzeBookPage({
+    required PagePhoto photo,
+    required String title,
+    String? author,
+    int? page,
+  }) async =>
+      throw const ApiException('책 스크랩은 곧 연결될 예정이에요. 지금은 기사만 스크랩할 수 있어요');
+}
+
 final scrapAnalysisRepositoryProvider = Provider<ScrapAnalysisRepository>(
-  (ref) => const FakeScrapAnalysisRepository(),
+  (ref) => ApiScrapAnalysisRepository(ref.watch(apiClientProvider)),
 );
 
 /// 가장 최근 분석 결과. 태그 확인 화면이 읽는다.

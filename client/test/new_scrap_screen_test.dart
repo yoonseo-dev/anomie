@@ -2,8 +2,10 @@ import 'package:client/app.dart';
 import 'package:client/features/scrap/new_scrap_screen.dart';
 import 'package:client/features/scrap/scrap_validators.dart';
 import 'package:client/features/scrap/tag_review_screen.dart';
+import 'package:client/shared/data/api_client.dart';
 import 'package:client/shared/data/scrap_analysis_repository.dart';
 import 'package:client/shared/models/scrap.dart';
+import 'package:client/shared/models/scrap_analysis.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,7 +20,13 @@ void main() {
   late ProviderContainer container;
 
   /// 홈에서 기사/책 카드를 눌러 새 스크랩 화면을 연다.
-  Future<void> openNewScrap(WidgetTester tester, ScrapSource source) async {
+  Future<void> openNewScrap(
+    WidgetTester tester,
+    ScrapSource source, {
+    ScrapAnalysisRepository analysis = const FakeScrapAnalysisRepository(
+      delay: Duration(milliseconds: 50),
+    ),
+  }) async {
     tester.view.physicalSize = const Size(375, 812);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -26,11 +34,7 @@ void main() {
     container = ProviderContainer(
       overrides: [
         ...signedIn(),
-        ...fakeData(
-          analysis: const FakeScrapAnalysisRepository(
-            delay: Duration(milliseconds: 50),
-          ),
-        ),
+        ...fakeData(analysis: analysis),
       ],
     );
     addTearDown(container.dispose);
@@ -91,6 +95,24 @@ void main() {
     expect(container.read(latestAnalysisProvider)?.tags, hasLength(3));
   });
 
+  testWidgets('기사: 분석이 실패하면 서버가 알려 준 이유를 보여 주고 화면에 남는다', (tester) async {
+    await openNewScrap(
+      tester,
+      ScrapSource.article,
+      analysis: const _FailingAnalysis(
+        ApiException('이미 스크랩한 기사입니다.', statusCode: 409),
+      ),
+    );
+
+    await tester.tap(find.text('붙여넣기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('분석하기'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('이미 스크랩한 기사입니다.'), findsOneWidget);
+    expect(find.byType(NewScrapScreen), findsOneWidget);
+  });
+
   testWidgets('책: 촬영하고 제목을 넣어야 분석하기가 켜진다', (tester) async {
     await openNewScrap(tester, ScrapSource.book);
 
@@ -134,4 +156,22 @@ void main() {
     expect(find.byType(NewScrapScreen), findsNothing);
     expect(find.text('최근 스크랩'), findsOneWidget);
   });
+}
+
+/// 항상 실패하는 분석 (서버 오류 문구 표시 확인용).
+class _FailingAnalysis implements ScrapAnalysisRepository {
+  const _FailingAnalysis(this.error);
+
+  final ApiException error;
+
+  @override
+  Future<ScrapAnalysis> analyzeArticle(String url) async => throw error;
+
+  @override
+  Future<ScrapAnalysis> analyzeBookPage({
+    required PagePhoto photo,
+    required String title,
+    String? author,
+    int? page,
+  }) async => throw error;
 }

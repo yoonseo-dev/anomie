@@ -4,6 +4,7 @@ import 'package:client/shared/data/concept_repository.dart';
 import 'package:client/shared/data/scrap_repository.dart';
 import 'package:client/shared/models/concept_detail.dart';
 import 'package:client/shared/models/scrap.dart';
+import 'package:client/shared/models/scrap_analysis.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -64,13 +65,14 @@ void main() {
 
   test('새로 저장한 스크랩이 맨 앞에 붙는다', () async {
     await scraps.save(
-      source: ScrapSource.article,
-      title: '새 기사',
-      origin: '한겨레',
-      originDetail: '한겨레 · 10월 12일',
-      sourceName: '한겨레',
-      conceptNames: ['아노미'],
-      explanations: {'아노미': '새 풀이'},
+      const ScrapAnalysis(
+        source: ScrapSource.article,
+        title: '새 기사',
+        origin: '한겨레 · 10월 12일',
+        sourceName: '한겨레',
+        tags: [],
+      ),
+      const [ApprovedTag(name: '아노미', reason: '새 풀이')],
     );
     container.invalidate(conceptDetailProvider);
 

@@ -1,7 +1,10 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/auth/auth_controller.dart';
 import '../models/scrap.dart';
+import '../models/scrap_analysis.dart';
+import 'api_client.dart';
 
 abstract interface class ScrapRepository {
   Future<List<Scrap>> fetchRecent({int limit = 3});
@@ -15,16 +18,8 @@ abstract interface class ScrapRepository {
   /// 모든 스크랩에서 태그를 뺀다 (태그 삭제).
   Future<void> removeConcept(String name);
 
-  /// 태그를 확정한 스크랩을 저장한다.
-  Future<Scrap> save({
-    required ScrapSource source,
-    required String title,
-    required String origin,
-    required String originDetail,
-    required String sourceName,
-    required List<String> conceptNames,
-    Map<String, String> explanations = const {},
-  });
+  /// 분석 결과를 사용자가 확인한 태그와 함께 저장한다.
+  Future<Scrap> save(ScrapAnalysis analysis, List<ApprovedTag> tags);
 }
 
 /// 서버 연결 전까지 쓰는 가짜 저장소. 앱이 켜져 있는 동안 메모리에만 저장한다.
@@ -127,34 +122,173 @@ class FakeScrapRepository implements ScrapRepository {
   }
 
   @override
-  Future<Scrap> save({
-    required ScrapSource source,
-    required String title,
-    required String origin,
-    required String originDetail,
-    required String sourceName,
-    required List<String> conceptNames,
-    Map<String, String> explanations = const {},
-  }) async {
+  Future<Scrap> save(ScrapAnalysis analysis, List<ApprovedTag> tags) async {
     await Future<void>.delayed(delay);
     final scrap = Scrap(
       id: 's${_nextId++}',
-      source: source,
-      title: title,
-      origin: origin,
-      originDetail: originDetail,
-      sourceName: sourceName,
+      source: analysis.source,
+      title: analysis.title,
+      // 홈 목록에는 짧게, 상세 화면에는 날짜·저자까지 보여 준다.
+      origin: analysis.sourceName,
+      originDetail: analysis.origin,
+      sourceName: analysis.sourceName,
       savedOn: _now(),
-      conceptNames: List.unmodifiable(conceptNames),
-      explanations: Map.unmodifiable(explanations),
+      conceptNames: List.unmodifiable(tags.map((t) => t.name)),
+      explanations: Map.unmodifiable({for (final t in tags) t.name: t.reason}),
     );
     _scraps.insert(0, scrap);
     return scrap;
   }
 }
 
+/// 서버 API 저장소 (`/articles`, `/book-scraps`).
+class ApiScrapRepository implements ScrapRepository {
+  ApiScrapRepository(this._dio);
+
+  final Dio _dio;
+
+  static String _date(DateTime d) => '${d.month}월 ${d.day}일';
+
+  static DateTime _time(Object? value) =>
+      DateTime.parse(value as String).toLocal();
+
+  /// 태그 연결 목록에서 개념 이름·풀이·근거 문장을 꺼낸다. 풀이가 비면 이유를 쓴다.
+  static (List<String>, Map<String, String>, Map<String, String>) _tags(
+    Object? links,
+  ) {
+    final names = <String>[];
+    final explanations = <String, String>{};
+    final excerpts = <String, String>{};
+    for (final link
+        in (links as List? ?? const []).cast<Map<String, dynamic>>()) {
+      final name = (link['tag'] as Map<String, dynamic>)['name'] as String;
+      names.add(name);
+      explanations[name] = switch (link['explanation']) {
+        final String e when e.isNotEmpty => e,
+        _ => link['reason'] as String,
+      };
+      if (link['excerpt'] case final String e) excerpts[name] = e;
+    }
+    return (names, explanations, excerpts);
+  }
+
+  /// `GET /articles` 한 건 (articleTags.tag 포함).
+  static Scrap articleFromJson(Map<String, dynamic> a) {
+    final savedOn = _time(a['createdAt']);
+    final publisher =
+        (a['publisher'] as String?) ??
+        Uri.tryParse(a['url'] as String? ?? '')?.host ??
+        '';
+    final (names, explanations, _) = _tags(a['articleTags']);
+    // 출처 줄의 날짜는 분석 화면처럼 기사 발행일, 없으면 저장한 날
+    final published = a['publishedAt'] == null
+        ? savedOn
+        : _time(a['publishedAt']);
+    return Scrap(
+      id: a['id'] as String,
+      source: ScrapSource.article,
+      title: a['title'] as String,
+      origin: publisher,
+      originDetail: [
+        if (publisher.isNotEmpty) publisher,
+        _date(published),
+      ].join(' · '),
+      sourceName: publisher,
+      savedOn: savedOn,
+      conceptNames: names,
+      explanations: explanations,
+    );
+  }
+
+  /// `GET /book-scraps` 한 건 (bookTags.tag 포함). 책은 제목 자리에 요약을 쓴다 (10-29 결정).
+  static Scrap bookFromJson(Map<String, dynamic> b) {
+    final bookTitle = b['bookTitle'] as String;
+    final page = b['page'] as int?;
+    final author = b['author'] as String?;
+    final (names, explanations, excerpts) = _tags(b['bookTags']);
+    return Scrap(
+      id: b['id'] as String,
+      source: ScrapSource.book,
+      title: b['summary'] as String,
+      origin: [bookTitle, if (page != null) '$page쪽'].join(' '),
+      originDetail: [
+        bookTitle,
+        ?author,
+        if (page != null) '$page쪽',
+      ].join(' · '),
+      sourceName: bookTitle,
+      savedOn: _time(b['createdAt']),
+      conceptNames: names,
+      explanations: explanations,
+      excerpts: excerpts,
+    );
+  }
+
+  Future<List<Scrap>> _list(
+    String path,
+    Scrap Function(Map<String, dynamic>) fromJson,
+  ) async {
+    try {
+      final res = await _dio.get<List<dynamic>>(path);
+      return [
+        for (final item in res.data ?? const [])
+          fromJson(item as Map<String, dynamic>),
+      ];
+    } catch (e) {
+      throw ApiException.from(e);
+    }
+  }
+
+  /// 기사와 책을 합쳐 최근에 저장한 것부터 (각각 서버 첫 페이지 20건 안에서).
+  Future<List<Scrap>> _recentAll() async {
+    final [articles, books] = await Future.wait([
+      _list('/articles', articleFromJson),
+      _list('/book-scraps', bookFromJson),
+    ]);
+    return [...articles, ...books]
+      ..sort((a, b) => b.savedOn.compareTo(a.savedOn));
+  }
+
+  @override
+  Future<List<Scrap>> fetchRecent({int limit = 3}) async =>
+      (await _recentAll()).take(limit).toList();
+
+  /// 개념 상세는 `GET /concepts/:id`를 쓰므로, 이건 최근 스크랩 안에서만 찾는다.
+  @override
+  Future<List<Scrap>> fetchByConcept(String conceptName) async =>
+      (await _recentAll())
+          .where((s) => s.conceptNames.contains(conceptName))
+          .toList();
+
+  // 태그 이름 바꾸기·빼기는 서버가 개념 병합·삭제 때 함께 처리한다.
+  @override
+  Future<void> renameConcept(String from, String to) async {}
+
+  @override
+  Future<void> removeConcept(String name) async {}
+
+  @override
+  Future<Scrap> save(ScrapAnalysis analysis, List<ApprovedTag> tags) async {
+    final isBook = analysis.source == ScrapSource.book;
+    // OCR 전문은 대조용으로만 받았으므로 서버로 돌려보내지 않는다.
+    final draft = {...analysis.draft}..remove('ocrText');
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        isBook ? '/book-scraps' : '/articles',
+        data: {
+          ...draft,
+          'tags': [for (final t in tags) t.toJson()],
+        },
+      );
+      return isBook ? bookFromJson(res.data!) : articleFromJson(res.data!);
+    } catch (e) {
+      throw ApiException.from(e);
+    }
+  }
+}
+
 final scrapRepositoryProvider = Provider<ScrapRepository>(
-  (ref) => FakeScrapRepository(),
+  (ref) => ApiScrapRepository(ref.watch(apiClientProvider)),
 );
 
 /// 로그인한 사용자가 바뀌면 다시 불러온다.

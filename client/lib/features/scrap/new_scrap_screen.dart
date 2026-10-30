@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/router/app_routes.dart';
 import '../../core/theme/app_dimens.dart';
+import '../../shared/data/api_client.dart';
 import '../../shared/models/scrap.dart';
 import '../../shared/widgets/content_width.dart';
 import '../../shared/widgets/corner_marks.dart';
@@ -69,11 +70,15 @@ class _NewScrapScreenState extends ConsumerState<NewScrapScreen> {
       final ok = await _controller.submit();
       // 새 스크랩 화면은 아래에 남겨 두어, 태그 확인에서 ‹로 돌아와 입력을 고칠 수 있게 한다.
       if (ok && mounted) context.push(AppRoutes.tagReview);
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('분석하지 못했어요. 잠시 뒤 다시 시도해 주세요')),
-      );
+      // 서버가 알려 준 이유가 있으면 그대로 보여 준다 (이미 스크랩한 기사, 분석 횟수 초과 등)
+      final message = e is ApiException
+          ? e.message
+          : '분석하지 못했어요. 잠시 뒤 다시 시도해 주세요';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
