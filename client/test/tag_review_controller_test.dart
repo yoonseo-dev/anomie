@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:client/features/scrap/tag_review_controller.dart';
 import 'package:client/shared/data/concept_graph_repository.dart';
 import 'package:client/shared/data/scrap_analysis_repository.dart';
@@ -168,6 +170,47 @@ void main() {
     test('같은 이름이 둘이면 처음 것만 남긴다', () {
       controller().rename(2, '아노미');
       expect(controller().approvedTags.map((t) => t.name), ['아노미', '이행기 지연']);
+    });
+  });
+
+  group('책 근거 문장', () {
+    setUp(() async {
+      final analysis =
+          await const FakeScrapAnalysisRepository(
+            delay: Duration.zero,
+          ).analyzeBookPage(
+            photo: PagePhoto(bytes: Uint8List(1)),
+            title: '자살론',
+          );
+      container.read(latestAnalysisProvider.notifier).set(analysis);
+      container.invalidate(tagReviewControllerProvider);
+    });
+
+    test('OCR 텍스트에서 찾지 못한 근거 문장만 확인 필요', () {
+      expect(state().drafts.map((d) => d.excerptNeedsCheck), [false, true]);
+    });
+
+    test('근거 문장을 고치면 확인 필요가 사라지고, 고친 문장으로 저장한다', () {
+      controller().editExcerpt(1, '  사회가 개인을 붙잡는 힘이 약해질수록 자살은 늘어난다  ');
+
+      expect(state().drafts[1].excerptNeedsCheck, isFalse);
+      expect(controller().approvedTags.map((t) => t.excerpt), [
+        '규범이 힘을 잃으면 욕망은 더 이상 한계를 알지 못한다.',
+        '사회가 개인을 붙잡는 힘이 약해질수록 자살은 늘어난다',
+      ]);
+    });
+
+    test('빈 근거 문장으로는 고치지 않는다', () {
+      controller().editExcerpt(0, '   ');
+      expect(state().drafts[0].excerpt, '규범이 힘을 잃으면 욕망은 더 이상 한계를 알지 못한다.');
+    });
+
+    test('이름을 고쳐도 고친 근거 문장은 그대로 남는다', () {
+      controller().editExcerpt(1, '고친 문장');
+      controller().rename(1, '사회 통합');
+
+      expect(state().drafts[1].excerpt, '고친 문장');
+      expect(state().drafts[1].excerptNeedsCheck, isFalse);
     });
   });
 }

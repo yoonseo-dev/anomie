@@ -68,8 +68,22 @@ class FakeScrapAnalysisRepository implements ScrapAnalysisRepository {
         SuggestedTag(
           name: '아노미',
           reason: '사회적 규범이 약해질 때 개인의 욕망을 조절할 기준이 사라진다는 뒤르켐의 핵심 논지입니다.',
+          excerpt: '규범이 힘을 잃으면 욕망은 더 이상 한계를 알지 못한다.',
+        ),
+        SuggestedTag(
+          name: '사회적 통합',
+          reason: '개인을 사회에 묶어 두는 힘이 약해지는 과정을 함께 설명합니다.',
+          isNew: true,
+          excerpt: '사회가 개인을 붙잡는 힘이 약해질수록',
+          excerptVerified: false,
         ),
       ],
+      draft: {
+        'bookTitle': title,
+        'author': ?author,
+        'page': ?page,
+        'summary': '규범이 느슨해질 때 욕망은 한계를 잃는다',
+      },
     );
   }
 }
@@ -94,6 +108,8 @@ class ApiScrapAnalysisRepository implements ScrapAnalysisRepository {
     explanation: (t['explanation'] as String?) ?? '',
     category: t['category'] as String?,
     description: t['description'] as String?,
+    excerpt: t['excerpt'] as String?,
+    excerptVerified: (t['excerptVerified'] as bool?) ?? true,
   );
 
   /// `POST /articles/analyze` 응답. tags 외의 값은 저장할 때 그대로 돌려보낸다.
@@ -135,15 +151,47 @@ class ApiScrapAnalysisRepository implements ScrapAnalysisRepository {
     }
   }
 
-  // TODO(④ 책 스크랩): 실제 카메라·갤러리 사진을 multipart로 POST /book-scraps/analyze
+  /// `POST /book-scraps/analyze` 응답. 책은 제목 자리에 요약을 쓴다 (10-29 결정).
+  /// ocrText는 draft에 남지만 저장할 때 빠진다 ([ApiScrapRepository.save]).
+  static ScrapAnalysis bookFromJson(Map<String, dynamic> json) {
+    final bookTitle = json['bookTitle'] as String;
+    final author = json['author'] as String?;
+    final page = json['page'] as int?;
+    return ScrapAnalysis(
+      source: ScrapSource.book,
+      title: json['summary'] as String,
+      origin: [bookTitle, ?author, if (page != null) '$page쪽'].join(' · '),
+      sourceName: bookTitle,
+      tags: [
+        for (final t in (json['tags'] as List).cast<Map<String, dynamic>>())
+          tagFromJson(t),
+      ],
+      draft: {...json}..remove('tags'),
+    );
+  }
+
   @override
   Future<ScrapAnalysis> analyzeBookPage({
     required PagePhoto photo,
     required String title,
     String? author,
     int? page,
-  }) async =>
-      throw const ApiException('책 스크랩은 곧 연결될 예정이에요. 지금은 기사만 스크랩할 수 있어요');
+  }) async {
+    try {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '/book-scraps/analyze',
+        data: FormData.fromMap({
+          'image': MultipartFile.fromBytes(photo.bytes, filename: photo.name),
+          'bookTitle': title,
+          'author': ?author,
+          'page': ?page?.toString(),
+        }),
+      );
+      return bookFromJson(res.data!);
+    } catch (e) {
+      throw ApiException.from(e);
+    }
+  }
 }
 
 final scrapAnalysisRepositoryProvider = Provider<ScrapAnalysisRepository>(

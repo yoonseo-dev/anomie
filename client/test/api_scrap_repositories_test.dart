@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:client/shared/data/api_client.dart';
 import 'package:client/shared/data/scrap_analysis_repository.dart';
 import 'package:client/shared/data/scrap_repository.dart';
@@ -99,14 +101,110 @@ void main() {
       );
     });
 
-    test('책 분석은 ④ 전까지 안내 문구로 막는다', () async {
-      await expectLater(
-        ApiScrapAnalysisRepository(
-          server.dio(),
-        ).analyzeBookPage(photo: const PagePhoto(), title: '자살론'),
-        throwsA(isA<ApiException>()),
+    test('책 분석: 사진과 책 정보를 multipart로, 요약이 제목이고 근거 문장·확인 필요를 받는다', () async {
+      server.responses['POST /book-scraps/analyze'] = (
+        200,
+        {
+          'bookTitle': '감시와 처벌',
+          'author': '미셸 푸코',
+          'page': 309,
+          'summary': '판옵티콘은 스스로를 규율하게 한다',
+          'ocrText': '사진 전문',
+          'tags': [
+            {
+              'tagId': null,
+              'name': '판옵티콘',
+              'isNew': true,
+              'category': '철학',
+              'description': '보이지 않는 감시',
+              'reason': '정의',
+              'explanation': '내면화',
+              'similarExisting': <Object>[],
+              'excerpt': '언제나 감시당할 수 있다 … 스스로를 감시한다',
+              'excerptVerified': true,
+            },
+            {
+              'tagId': 't1',
+              'name': '규율 권력',
+              'isNew': false,
+              'category': '철학',
+              'description': null,
+              'reason': '훈련',
+              'explanation': '',
+              'similarExisting': <Object>[],
+              'excerpt': '몸을 길들이는 권력',
+              'excerptVerified': false,
+            },
+          ],
+        },
       );
-      expect(server.requests, isEmpty);
+
+      final a = await ApiScrapAnalysisRepository(server.dio()).analyzeBookPage(
+        photo: PagePhoto(bytes: Uint8List(5), name: 'IMG_1.jpg'),
+        title: '감시와 처벌',
+        author: '미셸 푸코',
+        page: 309,
+      );
+
+      expect(
+        server.requests.single,
+        req('POST', '/book-scraps/analyze', {
+          'bookTitle': '감시와 처벌',
+          'author': '미셸 푸코',
+          'page': '309',
+          'image': 'IMG_1.jpg(5B)',
+        }),
+      );
+      expect(a.source, ScrapSource.book);
+      expect(a.title, '판옵티콘은 스스로를 규율하게 한다');
+      expect(a.origin, '감시와 처벌 · 미셸 푸코 · 309쪽');
+      expect(a.tags.map((t) => (t.excerpt, t.excerptVerified)), [
+        ('언제나 감시당할 수 있다 … 스스로를 감시한다', true),
+        ('몸을 길들이는 권력', false),
+      ]);
+      expect(a.draft['summary'], '판옵티콘은 스스로를 규율하게 한다');
+    });
+
+    test('책 분석: 저자·쪽수가 없으면 보내지 않는다', () async {
+      server.responses['POST /book-scraps/analyze'] = (
+        200,
+        {'bookTitle': '자살론', 'summary': '요약', 'tags': <Object>[]},
+      );
+
+      final a = await ApiScrapAnalysisRepository(server.dio()).analyzeBookPage(
+        photo: PagePhoto(bytes: Uint8List(1)),
+        title: '자살론',
+      );
+
+      expect(
+        server.requests.single,
+        req('POST', '/book-scraps/analyze', {
+          'bookTitle': '자살론',
+          'image': 'page.jpg(1B)',
+        }),
+      );
+      expect(a.origin, '자살론');
+    });
+
+    test('책 분석 실패(해상도 부족 등)는 서버 문구로 알린다', () async {
+      server.responses['POST /book-scraps/analyze'] = (
+        400,
+        {'message': '사진 해상도가 너무 낮습니다 (긴 변 1000px 이상). 더 선명하게 다시 찍어주세요.'},
+      );
+
+      await expectLater(
+        ApiScrapAnalysisRepository(server.dio()).analyzeBookPage(
+          photo: PagePhoto(bytes: Uint8List(1)),
+          title: '자살론',
+        ),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.message,
+            'message',
+            contains('해상도'),
+          ),
+        ),
+      );
     });
   });
 
@@ -233,12 +331,25 @@ void main() {
         draft: {'bookTitle': '감시와 처벌', 'summary': '요약', 'ocrText': '사진 전문'},
       );
 
-      await ApiScrapRepository(
-        server.dio(),
-      ).save(analysis, const [ApprovedTag(name: '판옵티콘', reason: '정의')]);
+      await ApiScrapRepository(server.dio()).save(analysis, const [
+        ApprovedTag(name: '판옵티콘', reason: '정의', excerpt: '고친 근거 문장'),
+      ]);
 
-      expect(server.requests.single, isNot(contains('사진 전문')));
-      expect(server.requests.single, startsWith('POST /book-scraps'));
+      expect(
+        server.requests.single,
+        req('POST', '/book-scraps', {
+          'bookTitle': '감시와 처벌',
+          'summary': '요약',
+          'tags': [
+            {
+              'name': '판옵티콘',
+              'reason': '정의',
+              'explanation': '',
+              'excerpt': '고친 근거 문장',
+            },
+          ],
+        }),
+      );
     });
 
     test('저장 실패는 서버 문구로 알린다', () async {

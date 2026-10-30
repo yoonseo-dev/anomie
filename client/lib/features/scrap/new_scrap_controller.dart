@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../shared/data/page_photo_source.dart';
 import '../../shared/data/scrap_analysis_repository.dart';
 import '../../shared/models/scrap.dart';
 import '../../shared/models/scrap_analysis.dart';
@@ -95,9 +96,12 @@ class NewScrapController extends Notifier<NewScrapState> {
 
   void markUrlTouched() => state = state.copyWith(urlTouched: true);
 
-  /// 가짜 촬영. 실제 카메라를 붙이면 촬영한 파일 경로를 넘긴다.
-  void capturePhoto([PagePhoto photo = const PagePhoto()]) =>
-      state = state.copyWith(photo: photo);
+  /// 카메라나 앨범에서 페이지 사진을 가져온다. 취소하면 이전 사진을 그대로 둔다.
+  /// 권한 거부 등으로 실패하면 예외를 그대로 던진다 (화면이 안내한다).
+  Future<void> pickPhoto(PhotoOrigin origin) async {
+    final photo = await ref.read(pagePhotoSourceProvider).pick(origin);
+    if (photo != null && ref.mounted) state = state.copyWith(photo: photo);
+  }
 
   void setBookTitle(String value) => state = state.copyWith(bookTitle: value);
 

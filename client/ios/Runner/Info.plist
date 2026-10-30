@@ -66,5 +66,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>스크랩할 책 페이지를 찍는 데 카메라를 사용합니다.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>앨범에 있는 책 페이지 사진을 고르는 데 사용합니다.</string>
 </dict>
 </plist>

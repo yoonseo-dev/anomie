@@ -99,6 +99,8 @@ class AuthInterceptor extends Interceptor {
     try {
       options.extra[_retried] = true;
       options.headers['Authorization'] = 'Bearer ${session.accessToken}';
+      // 사진 업로드(FormData)는 한 번 보내면 다시 쓸 수 없어 복제해서 보낸다.
+      if (options.data case final FormData form) options.data = form.clone();
       handler.resolve(await _dio.fetch<dynamic>(options));
     } on DioException catch (e) {
       handler.next(e);

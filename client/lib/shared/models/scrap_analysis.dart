@@ -1,11 +1,16 @@
+import 'dart:typed_data';
+
 import 'scrap.dart';
 
-/// 촬영한 책 페이지. 실제 카메라를 붙이기 전까지는 [path]가 없는 가짜 사진을 쓴다.
+/// 촬영하거나 앨범에서 고른 책 페이지 사진. 웹에서도 쓰도록 경로 대신 바이트를 들고 있다.
+/// 서버로 보내 분석한 뒤에는 어디에도 남기지 않는다.
 class PagePhoto {
-  const PagePhoto({this.path});
+  const PagePhoto({required this.bytes, this.name = 'page.jpg'});
 
-  /// 기기에 저장된 사진 경로. null이면 가짜 사진이다.
-  final String? path;
+  final Uint8List bytes;
+
+  /// 업로드할 때 쓰는 파일 이름 (형식은 서버가 파일 내용으로 확인한다).
+  final String name;
 }
 
 /// AI가 제안한 태그 하나 (서버 ArticleTag의 reason과 같은 역할).
@@ -18,9 +23,17 @@ class SuggestedTag {
     this.explanation = '',
     this.category,
     this.description,
+    this.excerpt,
+    this.excerptVerified = true,
   });
 
   final String name;
+
+  /// 책에서 이 개념을 뽑은 근거 문장 (떨어진 구간은 " … "로 이어져 있다). 기사면 null.
+  final String? excerpt;
+
+  /// 근거 문장이 OCR 텍스트에 글자 그대로 있는지. false면 "확인 필요".
+  final bool excerptVerified;
 
   /// 이 글에 이 태그를 붙인 이유.
   final String reason;
@@ -76,6 +89,7 @@ class ApprovedTag {
     this.explanation = '',
     this.category,
     this.description,
+    this.excerpt,
   });
 
   /// 저장할 태그 이름. 내 개념 이름과 같으면 서버가 그 개념에 붙인다.
@@ -87,11 +101,15 @@ class ApprovedTag {
   final String? category;
   final String? description;
 
+  /// 책의 근거 문장 (사용자가 고쳤으면 고친 문장). 책 저장에는 필수다.
+  final String? excerpt;
+
   Map<String, Object?> toJson() => {
     'name': name,
     'reason': reason,
     'explanation': explanation,
     'category': ?category,
     'description': ?description,
+    'excerpt': ?excerpt,
   };
 }

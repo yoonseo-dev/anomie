@@ -254,6 +254,27 @@ void main() {
       expect(renewed, isNot(testSession.accessToken));
     });
 
+    test('사진 업로드(FormData)도 갱신 뒤 다시 보낼 수 있다', () async {
+      final auth = FakeAuthRepository()
+        ..validRefreshTokens.add(testSession.refreshToken);
+      final container = containerWith([401, 200], auth);
+      addTearDown(container.dispose);
+      await container.read(authControllerProvider.future);
+
+      final res = await container
+          .read(apiClientProvider)
+          .post<dynamic>(
+            '/book-scraps/analyze',
+            data: FormData.fromMap({
+              'bookTitle': '자살론',
+              'image': MultipartFile.fromBytes([1, 2, 3], filename: 'p.jpg'),
+            }),
+          );
+
+      expect(res.statusCode, 200);
+      expect(seenAuth, hasLength(2));
+    });
+
     test('갱신도 실패하면 401을 그대로 돌려주고 로그아웃된다', () async {
       final container = containerWith([401], FakeAuthRepository());
       addTearDown(container.dispose);

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_dimens.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../shared/widgets/label_badge.dart';
 import '../../../shared/widgets/outlined_card.dart';
 import '../../../shared/widgets/tag_chip.dart';
 import '../../../shared/widgets/text_link_button.dart';
@@ -15,6 +16,7 @@ class SuggestedTagCard extends StatelessWidget {
     required this.onReplace,
     required this.onRename,
     required this.onRemove,
+    this.onEditExcerpt,
   });
 
   final TagDraft draft;
@@ -24,6 +26,9 @@ class SuggestedTagCard extends StatelessWidget {
 
   final VoidCallback onRename;
   final VoidCallback onRemove;
+
+  /// 근거 문장 수정하기 (책일 때만).
+  final VoidCallback? onEditExcerpt;
 
   @override
   Widget build(BuildContext context) {
@@ -54,6 +59,28 @@ class SuggestedTagCard extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.sm),
           Text(draft.suggestion.reason, style: AppTypography.bodySmall),
+          if (draft.excerpt case final excerpt?) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Row(
+              children: [
+                Text('근거 문장', style: AppTypography.caption),
+                if (draft.excerptNeedsCheck) ...[
+                  const SizedBox(width: AppSpacing.xs),
+                  const LabelBadge('확인 필요'),
+                ],
+              ],
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            // 개념 상세의 근거 문장과 같은 모양 (concept_scrap_entry.dart)
+            Text('“$excerpt”', style: AppTypography.bodySmall),
+            if (draft.excerptNeedsCheck) ...[
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                '사진에서 글자 그대로 찾지 못했어요. 책과 대조해 고쳐 주세요.',
+                style: AppTypography.caption,
+              ),
+            ],
+          ],
           if (similar.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.sm),
             Text('비슷한 내 태그로 바꾸기', style: AppTypography.caption),
@@ -78,6 +105,8 @@ class SuggestedTagCard extends StatelessWidget {
             spacing: AppSpacing.md,
             children: [
               TextLinkButton(label: '이름 수정하기', onPressed: onRename),
+              if (draft.excerpt != null && onEditExcerpt != null)
+                TextLinkButton(label: '근거 문장 수정하기', onPressed: onEditExcerpt),
               TextLinkButton(label: '빼기', onPressed: onRemove),
             ],
           ),

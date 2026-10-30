@@ -14,10 +14,16 @@ class TagDraft {
     required this.isNew,
     this.replacedWith,
     this.removed = false,
+    this.excerpt,
+    this.excerptEdited = false,
   });
 
-  factory TagDraft.from(SuggestedTag tag) =>
-      TagDraft(suggestion: tag, name: tag.name, isNew: tag.isNew);
+  factory TagDraft.from(SuggestedTag tag) => TagDraft(
+    suggestion: tag,
+    name: tag.name,
+    isNew: tag.isNew,
+    excerpt: tag.excerpt,
+  );
 
   /// AI가 처음 제안한 내용 (이유, 비슷한 내 태그).
   final SuggestedTag suggestion;
@@ -33,6 +39,16 @@ class TagDraft {
 
   final bool removed;
 
+  /// 책의 근거 문장 (근거 문장 수정하기를 하면 바뀐다). 기사면 null.
+  final String? excerpt;
+
+  /// 사용자가 근거 문장을 고쳤는지. 실물 책과 대조해 고친 것이므로 "확인 필요"를 거둔다.
+  final bool excerptEdited;
+
+  /// OCR 텍스트에서 그대로 찾지 못한 근거 문장이라 실물 책과 대조가 필요한지.
+  bool get excerptNeedsCheck =>
+      excerpt != null && !suggestion.excerptVerified && !excerptEdited;
+
   /// 저장될 이름.
   String get finalName => replacedWith ?? name;
 
@@ -44,6 +60,7 @@ class TagDraft {
     bool? isNew,
     String? Function()? replacedWith,
     bool? removed,
+    String? excerpt,
   }) {
     return TagDraft(
       suggestion: suggestion,
@@ -51,6 +68,8 @@ class TagDraft {
       isNew: isNew ?? this.isNew,
       replacedWith: replacedWith != null ? replacedWith() : this.replacedWith,
       removed: removed ?? this.removed,
+      excerpt: excerpt ?? this.excerpt,
+      excerptEdited: excerpt != null || excerptEdited,
     );
   }
 }
@@ -87,6 +106,7 @@ class TagReviewState {
 /// 태그 확인 화면 상태. 화면을 나가면 고친 내용도 사라진다.
 class TagReviewController extends Notifier<TagReviewState> {
   static const renameEmptyMessage = '태그 이름을 넣어 주세요';
+  static const excerptEmptyMessage = '근거 문장을 넣어 주세요';
 
   @override
   TagReviewState build() {
@@ -129,6 +149,13 @@ class TagReviewController extends Notifier<TagReviewState> {
     );
   }
 
+  /// 근거 문장을 고친다. 빈 문장은 무시한다 (책 저장에는 근거 문장이 필요하다).
+  void editExcerpt(int index, String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return;
+    _update(index, (d) => d.copyWith(excerpt: trimmed));
+  }
+
   void remove(int index) => _update(index, (d) => d.copyWith(removed: true));
 
   void restore(int index) => _update(index, (d) => d.copyWith(removed: false));
@@ -149,6 +176,7 @@ class TagReviewController extends Notifier<TagReviewState> {
             description: d.showsAsNew && d.name == d.suggestion.name
                 ? d.suggestion.description
                 : null,
+            excerpt: d.excerpt,
           ),
     ];
   }

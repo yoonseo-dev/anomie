@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/router/app_routes.dart';
 import '../../core/theme/app_dimens.dart';
 import '../../shared/data/api_client.dart';
+import '../../shared/data/page_photo_source.dart';
 import '../../shared/models/scrap.dart';
 import '../../shared/widgets/content_width.dart';
 import '../../shared/widgets/corner_marks.dart';
@@ -62,6 +63,17 @@ class _NewScrapScreenState extends ConsumerState<NewScrapScreen> {
   void _paste(String url) {
     _url.text = url;
     _controller.setUrl(url, touched: true);
+  }
+
+  Future<void> _pickPhoto(PhotoOrigin origin) async {
+    try {
+      await _controller.pickPhoto(origin);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('사진을 가져오지 못했어요. 카메라·사진 접근 권한을 확인해 주세요')),
+      );
+    }
   }
 
   Future<void> _submit() async {
@@ -145,7 +157,7 @@ class _NewScrapScreenState extends ConsumerState<NewScrapScreen> {
                     else
                       BookForm(
                         photo: state.photo,
-                        onCapture: _controller.capturePhoto,
+                        onPick: _pickPhoto,
                         titleController: _title,
                         titleFocusNode: _titleFocus,
                         authorController: _author,

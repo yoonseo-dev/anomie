@@ -103,4 +103,66 @@ void main() {
     expect(find.text(savedTitle), findsOneWidget);
     expect(find.text('상대적 박탈감 외 2'), findsOneWidget);
   });
+
+  testWidgets('기사에는 근거 문장이 없다', (tester) async {
+    await openReview(tester);
+    expect(find.text('근거 문장'), findsNothing);
+    expect(find.text('근거 문장 수정하기'), findsNothing);
+  });
+
+  group('책', () {
+    /// 홈 → 책 → 페이지 촬영 → 제목 → 분석하기 → 태그 확인.
+    Future<void> openBookReview(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(375, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [...signedIn(), ...fakeData()],
+          child: const AnomieApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.bySemanticsLabel('책 스크랩 추가'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('페이지 촬영'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextFormField, '예: 자살론'),
+        '자살론',
+      );
+      await tester.pump();
+      await tester.tap(find.text('분석하기'));
+      await tester.pumpAndSettle();
+      expect(find.byType(TagReviewScreen), findsOneWidget);
+    }
+
+    testWidgets('근거 문장을 보여 주고, 찾지 못한 문장에는 확인 필요를 붙인다', (tester) async {
+      await openBookReview(tester);
+
+      expect(find.text('“규범이 힘을 잃으면 욕망은 더 이상 한계를 알지 못한다.”'), findsOneWidget);
+      expect(find.text('“사회가 개인을 붙잡는 힘이 약해질수록”'), findsOneWidget);
+      expect(find.text('확인 필요'), findsOneWidget);
+      expect(find.text('근거 문장 수정하기'), findsNWidgets(2));
+    });
+
+    testWidgets('근거 문장을 고치면 확인 필요가 사라진다', (tester) async {
+      await openBookReview(tester);
+
+      await tester.tap(find.text('근거 문장 수정하기').last);
+      await tester.pumpAndSettle();
+      expect(find.text('근거 문장 수정하기'), findsNWidgets(3)); // 시트 제목 포함
+
+      await tester.enterText(
+        find.byType(TextField),
+        '사회가 개인을 붙잡는 힘이 약해질수록 자살은 늘어난다',
+      );
+      await tester.tap(find.text('저장'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('“사회가 개인을 붙잡는 힘이 약해질수록 자살은 늘어난다”'), findsOneWidget);
+      expect(find.text('확인 필요'), findsNothing);
+    });
+  });
 }

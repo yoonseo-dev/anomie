@@ -35,6 +35,23 @@ class TagReviewScreen extends ConsumerWidget {
     if (name != null) controller.rename(index, name);
   }
 
+  Future<void> _editExcerpt(
+    BuildContext context,
+    TagReviewController controller,
+    int index,
+    String current,
+  ) async {
+    final text = await TextEditSheet.show(
+      context,
+      title: '근거 문장 수정하기',
+      initialText: current,
+      hintText: '책에 적힌 그대로 옮겨 주세요',
+      emptyMessage: TagReviewController.excerptEmptyMessage,
+      multiline: true,
+    );
+    if (text != null) controller.editExcerpt(index, text);
+  }
+
   void _remove(
     BuildContext context,
     TagReviewController controller,
@@ -128,6 +145,12 @@ class TagReviewScreen extends ConsumerWidget {
                                   controller,
                                   i,
                                   draft.finalName,
+                                ),
+                                onEditExcerpt: () => _editExcerpt(
+                                  context,
+                                  controller,
+                                  i,
+                                  draft.excerpt ?? '',
                                 ),
                                 onRemove: () => _remove(
                                   context,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_dimens.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../shared/data/page_photo_source.dart';
 import '../../../shared/models/scrap_analysis.dart';
 import '../../../shared/widgets/app_text_field.dart';
 import 'page_photo_card.dart';
@@ -11,7 +12,7 @@ class BookForm extends StatelessWidget {
   const BookForm({
     super.key,
     required this.photo,
-    required this.onCapture,
+    required this.onPick,
     required this.titleController,
     required this.titleFocusNode,
     required this.authorController,
@@ -24,7 +25,7 @@ class BookForm extends StatelessWidget {
   });
 
   final PagePhoto? photo;
-  final VoidCallback onCapture;
+  final ValueChanged<PhotoOrigin> onPick;
 
   final TextEditingController titleController;
   final FocusNode titleFocusNode;
@@ -44,7 +45,7 @@ class BookForm extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: AppSpacing.lg),
-        PagePhotoCard(photo: photo, onCapture: onCapture),
+        PagePhotoCard(photo: photo, onPick: onPick),
         const SizedBox(height: 10),
         Text('사진은 분석 후 바로 지워집니다', style: AppTypography.caption),
         const SizedBox(height: AppSpacing.xl),
