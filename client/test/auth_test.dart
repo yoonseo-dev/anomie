@@ -287,6 +287,21 @@ void main() {
       expect(seenAuth, hasLength(1)); // 다시 보내지 않았다
     });
 
+    test('일반 요청은 15초, 분석 요청만 90초까지 응답을 기다린다', () {
+      final container = ProviderContainer(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository()),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      expect(
+        container.read(apiClientProvider).options.receiveTimeout,
+        const Duration(seconds: 15),
+      );
+      expect(analyzeOptions.receiveTimeout, const Duration(seconds: 90));
+    });
+
     test('서버의 { message }를 ApiException 문구로 바꾼다', () {
       final error = DioException(
         requestOptions: RequestOptions(path: '/x'),

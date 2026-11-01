@@ -44,11 +44,17 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
+/// 목록·상세·저장처럼 금방 끝나는 요청의 응답 대기 시간. 연결이 응답 없이 멈추면
+/// (예: 무선 디버깅 재연결 뒤 끊긴 adb reverse) 로딩만 도는 대신 "다시 시도"를 보여 준다.
+const defaultReceiveTimeout = Duration(seconds: 15);
+
+/// 분석(크롤링·OCR·Claude)은 수십 초 걸릴 수 있어 이 요청에만 길게 준다.
+final analyzeOptions = Options(receiveTimeout: const Duration(seconds: 90));
+
 BaseOptions _baseOptions() => BaseOptions(
   baseUrl: AppConfig.apiBaseUrl,
   connectTimeout: const Duration(seconds: 10),
-  // 분석(크롤링·OCR·Claude)은 수십 초 걸릴 수 있다.
-  receiveTimeout: const Duration(seconds: 90),
+  receiveTimeout: defaultReceiveTimeout,
   contentType: Headers.jsonContentType,
 );
 

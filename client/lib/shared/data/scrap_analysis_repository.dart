@@ -144,6 +144,7 @@ class ApiScrapAnalysisRepository implements ScrapAnalysisRepository {
       final res = await _dio.post<Map<String, dynamic>>(
         '/articles/analyze',
         data: {'url': url},
+        options: analyzeOptions,
       );
       return articleFromJson(res.data!);
     } catch (e) {
@@ -186,6 +187,7 @@ class ApiScrapAnalysisRepository implements ScrapAnalysisRepository {
           'author': ?author,
           'page': ?page?.toString(),
         }),
+        options: analyzeOptions,
       );
       return bookFromJson(res.data!);
     } catch (e) {

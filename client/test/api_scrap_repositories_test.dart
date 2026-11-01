@@ -79,6 +79,11 @@ void main() {
       expect(a.tags[1].description, '학교에서 일자리로 넘어가는 기간이 길어지는 현상');
       expect(a.draft.containsKey('tags'), isFalse);
       expect(a.draft['content'], '본문');
+      // 분석은 오래 걸릴 수 있어 기본(15초)보다 길게 기다린다
+      expect(
+        server.sentOptions.single.receiveTimeout,
+        analyzeOptions.receiveTimeout,
+      );
     });
 
     test('서버 문구(이미 스크랩한 기사, 분석 횟수 초과 등)를 그대로 알린다', () async {
@@ -184,6 +189,10 @@ void main() {
         }),
       );
       expect(a.origin, '자살론');
+      expect(
+        server.sentOptions.single.receiveTimeout,
+        analyzeOptions.receiveTimeout,
+      );
     });
 
     test('책 분석 실패(해상도 부족 등)는 서버 문구로 알린다', () async {

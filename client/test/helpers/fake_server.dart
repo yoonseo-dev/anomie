@@ -23,6 +23,9 @@ class FakeServer implements HttpClientAdapter {
   final requests = <String>[];
   final responses = <String, (int, Object?)>{};
 
+  /// 보낸 요청의 옵션 (응답 대기 시간 등 확인용). [requests]와 순서가 같다.
+  final sentOptions = <RequestOptions>[];
+
   /// 이 서버로 요청을 보내는 Dio.
   Dio dio() =>
       Dio(BaseOptions(baseUrl: 'http://test'))..httpClientAdapter = this;
@@ -34,6 +37,7 @@ class FakeServer implements HttpClientAdapter {
     Future<void>? cancelFuture,
   ) async {
     requests.add(req(options.method, options.path, options.data));
+    sentOptions.add(options);
     final (status, body) =
         responses['${options.method} ${options.path}'] ?? (204, null);
     return ResponseBody.fromString(
