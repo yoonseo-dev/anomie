@@ -4,4 +4,7 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- 개발 서버(http://localhost:3000, adb reverse)는 암호화되지 않은 http라서 디버그 빌드에서만 허용한다.
+         배포 빌드(main)는 기본값(https만)을 그대로 쓴다. -->
+    <application android:usesCleartextTraffic="true"/>
 </manifest>

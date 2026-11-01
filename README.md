@@ -316,21 +316,70 @@ erDiagram
 
 ## 실행 방법
 
+먼저 **Docker Desktop을 실행**해 둡니다. 꺼져 있으면 DB 명령이 `failed to connect to the docker API`,
+서버 명령이 `Can't reach database server at localhost:5433`으로 실패합니다.
+
 ```bash
-# DB (루트)
+# DB — 반드시 저장소 루트에서 (루트의 docker-compose.yml을 쓴다)
 docker compose up -d
 
-# 서버 (server/) — .env에 DATABASE_URL, JWT_SECRET, ANTHROPIC_API_KEY, GOOGLE_VISION_API_KEY
+# 서버
+cd server
+cp -n .env.example .env  # .env가 없을 때만 복사 (-n: 이미 있으면 덮어쓰지 않는다). 그다음 키 값을 채운다
 npm install
+npx prisma generate    # Prisma 7은 설치·마이그레이션 때 클라이언트를 자동으로 만들지 않는다
 npx prisma migrate dev
-npm start            # http://localhost:3000
-npm test
+npm start              # http://localhost:3000
+npm test               # DB가 켜져 있어야 한다
 
-# 앱 (client/)
+# 앱
+cd ../client
 flutter pub get
 flutter run          # 웹으로 띄우면 서버 .env에 CORS_ORIGINS 필요
 flutter test --concurrency=1
 ```
+
+### 안드로이드 실기기 (무선 디버깅)
+
+PC와 휴대폰이 같은 Wi-Fi에 있어야 합니다. 휴대폰은 Android 11 이상이어야 하고,
+**설정 → 개발자 옵션 → 무선 디버깅**을 켭니다.
+
+```bash
+# 1) 처음 한 번만 페어링: 무선 디버깅 → "페어링 코드로 기기 페어링"에 나오는 IP:포트와 6자리 코드
+adb pair 192.168.0.12:37123          # 실행 후 코드 입력
+
+# 2) 연결: 무선 디버깅 화면 위쪽의 "IP 주소 및 포트" (페어링 포트와 다름)
+adb connect 192.168.0.12:41234
+adb devices                          # 목록에 기기가 보이면 연결된 것
+flutter devices                      # Flutter가 쓸 기기 ID 확인
+
+# 3) 휴대폰의 localhost:3000을 PC 서버로 연결 (연결할 때마다 다시 실행)
+#    같은 폰이 adb devices에 두 줄(IP와 adb-...-tls-connect)로 보이면 -s로 하나를 고른다
+adb reverse tcp:3000 tcp:3000
+adb -s 192.168.0.12:41234 reverse tcp:3000 tcp:3000   # "more than one device" 오류가 날 때
+adb reverse --list                                     # tcp:3000 tcp:3000이 보이면 된 것
+
+# 4) 앱 실행 (기본 주소 10.0.2.2는 에뮬레이터 전용이라 서버 주소를 직접 준다)
+flutter run -d 192.168.0.12:41234 --dart-define=API_BASE_URL=http://localhost:3000
+
+# 끝나면
+adb disconnect
+```
+
+- `adb reverse` 대신 PC의 내부 IP를 쓸 수도 있습니다: `--dart-define=API_BASE_URL=http://<PC IP>:3000`.
+  이 경우 Windows 방화벽에서 3000번 포트를 허용해야 합니다.
+- IP와 포트는 무선 디버깅을 껐다 켜면 바뀝니다. 그때는 2)부터 다시 합니다.
+- **연결이 끊겼다가 다시 이어졌다면** `adb reverse --list`에 3000이 보여도 터널이 죽어 있을 수 있습니다.
+  이때 앱은 화면만 뜨고 데이터 부분에서 로딩이 돌다가 15초 뒤 "다시 시도"가 나옵니다. 포워딩을 지우고 다시 건 뒤 앱을 재실행합니다:
+  ```bash
+  adb reverse --remove-all
+  adb -s 192.168.0.12:41234 reverse tcp:3000 tcp:3000
+  ```
+- `adb`가 없으면 Android SDK의 `platform-tools` 폴더를 PATH에 추가합니다.
+- 안드로이드는 암호화되지 않은 `http` 연결을 기본으로 막으므로, 디버그 빌드에서만 허용해 두었습니다
+  (`android/app/src/debug/AndroidManifest.xml`). 배포 서버는 `https`를 써야 합니다.
+- "서버에 연결할 수 없어요"가 나오면: PC에서 서버가 켜져 있는지, `adb reverse --list`에 3000이 있는지,
+  `flutter run`에 `--dart-define=API_BASE_URL=http://localhost:3000`을 줬는지 확인합니다.
 
 ## 문서
 
