@@ -115,6 +115,11 @@ String overflowIdFor(String parentId) => '__more__$parentId';
 ///   최소 선 길이 [minEdge]를 만족하는 값으로 계산한다.
 /// - 같은 데이터면 늘 같은 배치가 나오도록 놓는 순서를 고정한다
 ///   (스크랩 수 → 연결 수 → 이름).
+/// - 1단계가 1~2개면 좌우로 놓는다 (위아래 한 줄로 서지 않게).
+///
+/// [previous]는 직전 화면의 개념 위치(아무 원점 기준)다. 그 안에 새 가운데 개념이 있으면
+/// 1단계 개념을 새 가운데 개념에서 본 예전 방향 순서대로 놓고, 직전 가운데 개념이 예전
+/// 방향(= 눌러 들어온 반대쪽)에 오도록 돌린다. 그래서 개념을 타고 들어가도 방향이 이어진다.
 GraphLayout radialLayout(
   ConceptGraph graph,
   String focusId, {
@@ -124,6 +129,7 @@ GraphLayout radialLayout(
   double minEdge = 24,
   double gap = 8,
   bool showOverflow = true,
+  Map<String, Offset>? previous,
 }) {
   final focus = graph.node(focusId);
   if (focus == null) return GraphLayout.empty;
@@ -199,9 +205,30 @@ GraphLayout radialLayout(
   NodeMetrics metricsOf(ConceptNode n, GraphNodeRole role) =>
       measure(n, role, degreeOf(n.id), maxScrap);
 
+  // 직전 화면에서 새 가운데 개념을 기준으로 본 방향. 직전 화면에 없던 개념은 null.
+  final previousCenter = previous?[focusId];
+  double? previousAngle(String id) {
+    final p = previous?[id];
+    if (previousCenter == null || p == null || p == previousCenter) return null;
+    final d = p - previousCenter;
+    return math.atan2(d.dy, d.dx);
+  }
+
+  // 직전 화면이 있으면 예전 방향 순서(시계 방향)로, 처음 보는 개념은 그 뒤에 우선순위대로 둔다.
+  // 어떤 2단계 개념을 누구 밑에 둘지는 위에서 우선순위대로 이미 정했다.
+  final seen = [
+    for (final p in primary)
+      if (previousAngle(p.id) != null) p,
+  ]..sort((a, b) => previousAngle(a.id)!.compareTo(previousAngle(b.id)!));
+  final orderedPrimary = [
+    ...seen,
+    for (final p in primary)
+      if (previousAngle(p.id) == null) p,
+  ];
+
   // 1단계 자리: 실제 개념 + (넘치면) 가운데에 딸린 "+N".
   final ring1Items = <(ConceptNode, GraphNodeRole)>[
-    for (final p in primary) (p, roleOf(p)),
+    for (final p in orderedPrimary) (p, roleOf(p)),
     if (hidden.containsKey(focusId))
       (overflowNode(focusId), GraphNodeRole.overflow),
   ];
@@ -259,12 +286,42 @@ GraphLayout radialLayout(
   final totalWeight = weights.fold<int>(0, (a, b) => a + b);
   final spans = [for (final w in weights) 2 * math.pi * w / totalWeight];
 
-  // 첫 개념이 왼쪽 위에서 시작하도록 회전시킨다 (Figma 배치와 비슷하게).
   final centers = <double>[];
-  var cursor = -math.pi / 2 - spans.first;
+  var cursor = 0.0;
   for (final s in spans) {
     centers.add(cursor + s / 2);
     cursor += s;
+  }
+
+  // 회전: 기준 개념 하나를 원하는 각도에 맞추고 나머지는 그만큼 같이 돌린다.
+  // 기준은 직전 가운데 개념(직전 화면에서 원점에 있던 개념) → 직전 화면에 있던 첫 개념 순.
+  final n1Count = ring1Items.length;
+  var anchor = -1;
+  for (var i = 0; i < n1Count && anchor < 0; i++) {
+    final id = ring1Items[i].$1.id;
+    // 새 가운데 개념이 직전 화면에 없었으면(숨은 개념에서 고른 경우 등) 방향을 알 수 없다
+    if (previous?[id] == Offset.zero && previousAngle(id) != null) anchor = i;
+  }
+  for (var i = 0; i < n1Count && anchor < 0; i++) {
+    if (previousAngle(ring1Items[i].$1.id) != null) anchor = i;
+  }
+  final double rotation;
+  if (anchor >= 0) {
+    var target = previousAngle(ring1Items[anchor].$1.id)!;
+    if (n1Count <= 2) {
+      // 1~2개면 예전 방향이 오른쪽에 가까운지 왼쪽에 가까운지만 따라 좌우로 놓는다.
+      target = math.cos(target) >= 0 ? 0 : math.pi;
+    }
+    rotation = target - centers[anchor];
+  } else if (n1Count <= 2) {
+    // 1개면 오른쪽, 2개면 첫 개념이 왼쪽 (두 개념의 중심 각도 차는 항상 반 바퀴다).
+    rotation = (n1Count == 1 ? 0 : math.pi) - centers.first;
+  } else {
+    // 첫 개념이 왼쪽 위에서 시작하도록 회전시킨다 (Figma 배치와 비슷하게).
+    rotation = -math.pi / 2 - spans.first;
+  }
+  for (var i = 0; i < centers.length; i++) {
+    centers[i] += rotation;
   }
 
   // ── 1단계 반지름: 선 길이와 이웃 간격을 모두 만족하는 최솟값 ─────────

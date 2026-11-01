@@ -44,6 +44,25 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   /// 마지막으로 화면 맞춤을 적용한 (가운데 개념, 화면 크기).
   (String, Size)? _fittedFor;
 
+  /// 지금 보여 주는 배치와 그 (그래프, 가운데 개념). 가운데 개념이나 데이터가 바뀌면
+  /// 이 배치를 넘겨 새로 계산한다. 그래서 개념을 타고 들어가도 지나온 방향과 순서가 이어지고,
+  /// 같은 화면에서 다시 그릴 때(관계 승인 등)도 배치가 흔들리지 않는다.
+  GraphLayout? _layout;
+  (ConceptGraph, String)? _layoutKey;
+
+  GraphLayout _layoutOf(ConceptGraph graph, String focusId) {
+    final key = (graph, focusId);
+    if (_layout == null || _layoutKey != key) {
+      _layout = ConceptGraphStyle.full.layoutFor(
+        graph,
+        focusId,
+        previous: _layout,
+      );
+      _layoutKey = key;
+    }
+    return _layout!;
+  }
+
   @override
   void dispose() {
     _transform.dispose();
@@ -52,7 +71,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   Widget _buildGraph(ConceptGraph graph, String focusId, EdgeInsets insets) {
     final controller = ref.read(mapTrailProvider.notifier);
-    final layout = ConceptGraphStyle.full.layoutFor(graph, focusId);
+    final layout = _layoutOf(graph, focusId);
     final canvas = ConceptGraphCanvas(
       layout: layout,
       style: ConceptGraphStyle.full,

@@ -151,7 +151,12 @@ class ConceptGraphStyle {
     }
   }
 
-  GraphLayout layoutFor(ConceptGraph graph, String focusId) => radialLayout(
+  /// [previous]: 직전 배치. 주면 개념을 타고 들어가도 방향이 이어지게 놓는다 ([radialLayout] 참고).
+  GraphLayout layoutFor(
+    ConceptGraph graph,
+    String focusId, {
+    GraphLayout? previous,
+  }) => radialLayout(
     graph,
     focusId,
     measure: measure,
@@ -160,6 +165,12 @@ class ConceptGraphStyle {
     minEdge: minEdge,
     gap: gap,
     showOverflow: showOverflow,
+    previous: previous == null
+        ? null
+        : {
+            for (final n in previous.nodes)
+              if (n.role != GraphNodeRole.overflow) n.node.id: n.position,
+          },
   );
 }
 
