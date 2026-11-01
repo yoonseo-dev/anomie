@@ -89,7 +89,10 @@ flutter build web --release          # 결과물: client/build/web
 - `sample/`(루트)은 OCR 시험용 책 사진이다. 저작물이므로 커밋하지 않는다 (`.gitignore`).
 - **분석 호출마다 비용·품질이 기록된다** (`services/evalService.js`). 응답 뒤 백그라운드에서 Claude가
   `src/eval/rubric.md` 기준표로 채점하고 `server/logs/analysis-YYYY-MM.jsonl`에 한 줄 남긴다 (원문은 남기지 않음).
-  채점은 `claude-haiku-5-5`(기준표 프롬프트 캐시)로 하며 호출당 약 1.5원이다 (분석은 Haiku 4.5로 약 10원).
+  채점은 `claude-haiku-5-5`(기준표 프롬프트 캐시)로 하며 호출당 약 1.5원이다.
+  기사·책 분석은 `claude-sonnet-5-5`(effort medium, 거절 시 `fallbacks: "default"`)로 책 1장 약 30원·10초다
+  (11-01. Haiku 4.5 약 10원은 학술 용어가 부정확했고, Opus 5.5 약 90원은 비싸서 제외),
+  관계 제안은 Haiku 4.5 그대로다. 분석이 beta 경로(`client.beta.messages.stream`)라 테스트는 두 경로를 모두 가짜로 바꾼다.
   `ANALYSIS_JUDGE_UNTIL=YYYY-MM-DD`면 그날까지만 채점하고, `ANALYSIS_JUDGE=off`면 채점만, `ANALYSIS_LOG=off`면 기록 전체를 끈다
   (테스트는 `test/helpers.js`에서 끈다). 단가·환율은 `src/eval/pricing.js`.
 - **Claude 크레딧 잔액은 서버가 장부로 추정한다** (`services/creditService.js`, `server/logs/credit.jsonl`).

@@ -79,7 +79,8 @@ describe('creditService: 크레딧 잔액 장부', () => {
   test('Claude 호출은 응답 결과를 못 써도 비용을 장부에 남긴다', async () => {
     await creditService.setBalance(4.7);
     const recorded = mock.method(creditService, 'recordUsageInBackground', () => {});
-    mock.method(claudeService.client.messages, 'stream', () => ({
+    // 분석은 beta 경로(대체 모델 사용)로 부른다
+    mock.method(claudeService.client.beta.messages, 'stream', () => ({
       finalMessage: async () => ({
         stop_reason: 'max_tokens',
         usage: { input_tokens: 3000, output_tokens: 1000 },
@@ -90,7 +91,7 @@ describe('creditService: 크레딧 잔액 장부', () => {
     await assert.rejects(claudeService.analyzeArticleTags('본문'), { status: 502 });
     assert.equal(recorded.mock.callCount(), 1);
     assert.deepEqual(recorded.mock.calls[0].arguments[0], {
-      usage: { ...usage, cacheWriteTokens: 0, cacheReadTokens: 0 },
+      usage: { ...usage, model: claudeService.ANALYSIS_MODEL, cacheWriteTokens: 0, cacheReadTokens: 0 },
       what: '기사',
     });
   });

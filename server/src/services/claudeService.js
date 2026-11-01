@@ -5,6 +5,18 @@ const creditService = require('./creditService');
 const client = new Anthropic();
 
 const MODEL = 'claude-haiku-4-5-20251001';
+
+// 기사·책 분석 모델. 학술 용어를 정확히 고르도록 상위 모델을 쓴다 (11-01, Haiku 4.5에서 변경.
+// Opus 5.5는 책 1장 약 90원이라 비용 때문에 Sonnet 5.5로). 관계 제안은 그대로 MODEL을 쓴다.
+const ANALYSIS_MODEL = 'claude-sonnet-5-5';
+
+// 모델별 호출 설정. Sonnet 5.5는 생각(thinking)이 기본으로 켜져 있고 깊이는 effort로 정한다
+// (이 모델의 기본은 high지만, 개념 고르기는 medium으로 충분하고 생각 토큰 비용을 줄인다).
+// 생각에 쓰는 토큰도 출력에 들어가므로 max_tokens를 넉넉히 둔다.
+// fallback: 안전 분류기가 거절하면 서버가 권장 모델로 다시 돌린다 (beta server-side-fallback-2026-07-01).
+const MODEL_OPTIONS = {
+  [ANALYSIS_MODEL]: { effort: 'medium', maxTokens: 16000, fallback: true },
+};
 // 채점용 모델. 기준표(약 2,800토큰)를 프롬프트 캐시에 올리려면 최소 길이가 512토큰인 모델이어야 한다
 // (Haiku 4.5는 4,096토큰 미만이면 캐시되지 않음). 단가도 Haiku 4.5의 1/10 (10-29)
 const JUDGE_MODEL = 'claude-haiku-5-5';
@@ -13,18 +25,26 @@ const JUDGE_MODEL = 'claude-haiku-5-5';
 const CATEGORIES = ['사회학', '철학', '정치학', '경제학', '심리학', '인류학', '커뮤니케이션학', '기타'];
 
 // 기사·책 공통 태그 기준. source는 "기사" 또는 "책 구절"
-const tagRules = (source) => `태그 선정 기준:
+const tagRules = (source) => `태그 고르는 순서:
+1. 먼저 기존 태그 목록은 보지 말고 ${source} 원문만 읽고, 원문에 드러난 핵심 개념을 중요한 순서로 고른다.
+2. 그다음 고른 개념마다 같은 개념의 기존 태그가 있는지 확인한다 (아래 "기존 태그 재사용").
+기존 태그 목록에 있다는 이유만으로 태그를 고르지 않는다. 원문의 핵심이 아닌 기존 태그를 넣느라 원문의 핵심 개념을 빼면 안 된다.
+
+태그 선정 기준:
 1. 학문적 근거 — 반드시 특정 학자, 이론, 학파와 직접 연결되는 개념만 선택한다. 막연한 키워드나 일상 용어는 제외한다.
 2. 변별력 — 이 ${source}에 특별히 적합한 태그여야 한다. 어떤 글에나 붙여도 어색하지 않을 태그는 제외한다.
 3. 태그 수 제한 — 최대 3개. 억지로 채우지 말고 진짜 해당되는 것만 선택한다.
-4. 태그 이름 — 학계에서 통용되는 개념어를 짧은 명사구로 쓴다 (보통 2~8자). 글의 내용을 문장처럼 풀어 쓰지 않는다. 다른 글에도 그대로 붙일 수 있는 이름이어야 다른 스크랩과 연결된다.
-   - 좋은 예: 아노미, 지위 불안, 인정 투쟁, 상대적 박탈감, 낙인 효과, 사회적 자본
-   - 나쁜 예: "사회적 지위의 조건부 인정", "부모의 무조건적 사랑과 성인 관계의 조건성"
+4. 태그 이름 — 학계와 교과서에서 실제로 쓰는 학술 용어를 그대로 쓴다 (보통 2~8자). 다른 글에도 그대로 붙일 수 있는 이름이어야 다른 스크랩과 연결된다.
+   - 원문이 학술 개념어를 직접 쓰면(예: "염세주의", "소외") 그 용어를 우선한다.
+   - 개념을 풀어 쓴 설명형 이름, 두 개념을 "A와 B"로 묶은 이름, 원문 표현을 조합해 새로 만든 이름은 쓰지 않는다. 두 개념이 모두 중요하면 태그를 둘로 나눈다.
+   - 좋은 예: 아노미, 지위 불안, 인정 투쟁, 상대적 박탈감, 낙인 효과, 사회적 자본, 자유주의, 소외, 염세주의
+   - 나쁜 예 → 바른 이름: "인간의 자유화" → 자유주의, "불안과 지위 경쟁" → 지위 불안, "염세주의적 거리두기" → 염세주의, "노동과 소비의 모순" → 소외, "사회적 지위의 조건부 인정" → 조건부 인정
+   - 정확히 맞는 학술 용어가 정말 없을 때만 짧은 설명형 이름을 쓰고, reason에 통용되는 용어가 없어서 그렇게 지었다고 밝힌다.
 5. 확신 원칙 — 억지로 끼워 맞추지 않되, 합리적 학문적 근거가 있다면 반드시 태그를 붙인다. ${source}에서 사회적 현상이나 개념이 분명히 드러난다면 최소 1개는 포함한다.
 
 사용자의 기존 태그 재사용:
 - 사용자 메시지에 "기존 태그" 목록이 번호(T1, T2 …)와 함께 주어진다.
-- 고른 개념이 기존 태그와 같은 개념이면(표기·띄어쓰기·동의어가 달라도) 반드시 그 번호를 existingTag에 넣는다. 이때 name에는 기존 태그 이름을 그대로 쓰고 description은 null로 둔다.
+- 원문에서 고른 개념이 기존 태그와 같은 개념이면(표기·띄어쓰기·동의어가 달라도) 반드시 그 번호를 existingTag에 넣는다. 이때 name에는 기존 태그 이름을 그대로 쓰고 description은 null로 둔다. 관련만 있고 같은 개념이 아니면 재사용하지 않는다.
 - 기존 태그 중 같은 개념이 없을 때만 existingTag를 null로 두고 새 태그 이름을 name에 쓴다.
 - 새 태그일 때 similarExistingTags에는 사용자가 대신 고를 만한 비슷한 기존 태그 번호를 최대 3개 넣는다. 없거나 기존 태그를 재사용했으면 빈 배열로 둔다.
 - 목록에 없는 번호는 절대 쓰지 않는다.
@@ -133,15 +153,22 @@ function resolveRefs(raw, byRef) {
 // JSON 스키마를 지정해 Claude를 호출한다. what은 오류 문구용 ("기사", "책 구절")
 // { data: 파싱한 결과, usage: { model, inputTokens, outputTokens, cacheWriteTokens, cacheReadTokens } }를 돌려준다 (비용 기록용)
 async function requestJson({ model = MODEL, system, schema, content, what }) {
+  const options = MODEL_OPTIONS[model] ?? {};
+  const params = {
+    model,
+    max_tokens: options.maxTokens ?? 8192,
+    system,
+    output_config: {
+      format: { type: 'json_schema', schema },
+      ...(options.effort && { effort: options.effort }),
+    },
+    messages: [{ role: 'user', content }],
+  };
   let message;
   try {
-    const stream = client.messages.stream({
-      model,
-      max_tokens: 8192,
-      system,
-      output_config: { format: { type: 'json_schema', schema } },
-      messages: [{ role: 'user', content }],
-    });
+    const stream = options.fallback
+      ? client.beta.messages.stream({ ...params, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' })
+      : client.messages.stream(params);
     message = await stream.finalMessage();
   } catch (err) {
     if (err instanceof Anthropic.RateLimitError) {
@@ -173,8 +200,15 @@ async function requestJson({ model = MODEL, system, schema, content, what }) {
   // 응답이 잘리거나 결과를 못 쓰는 경우에도 비용은 청구되므로 먼저 잔액에서 뺀다
   creditService.recordUsageInBackground({ usage, what });
 
+  // 비용은 요청한 모델 단가로 기록한다 (드물게 거절 → 다른 모델로 다시 돈 경우는 로그로만 남긴다)
+  if ((message.usage.iterations ?? []).some((i) => i.type === 'fallback_message')) {
+    console.log(`[Claude] ${what} | 거절되어 다른 모델(${message.model})로 다시 분석함`);
+  }
+  if (message.stop_reason === 'refusal') {
+    console.error(`[Claude] ${what} | 거절: ${message.stop_details?.category ?? '분류 없음'}`);
+  }
   if (message.stop_reason !== 'end_turn') {
-    // max_tokens: 응답이 잘림, refusal: 스키마를 따르지 않았을 수 있음
+    // max_tokens: 응답이 잘림, refusal: 안전 분류기가 거절(대체 모델까지)
     throw httpError(502, `${what} 분석 결과를 받지 못했습니다. 다시 시도해주세요.`);
   }
   const text = message.content.find((b) => b.type === 'text')?.text ?? '';
@@ -192,6 +226,7 @@ async function requestJson({ model = MODEL, system, schema, content, what }) {
 async function analyzeArticleTags(articleText, existingTags = []) {
   const { byRef, refs, text: tagList } = numberTags(existingTags);
   const { data: raw, usage } = await requestJson({
+    model: ANALYSIS_MODEL,
     system: ARTICLE_SYSTEM_PROMPT,
     schema: articleAnalysisSchema(refs),
     content: `기존 태그:\n${tagList}\n\n다음 뉴스 기사를 분석해주세요:\n\n${articleText}`,
@@ -206,6 +241,7 @@ async function analyzeBookPage({ ocrText, bookTitle, author }, existingTags = []
   const { byRef, refs, text: tagList } = numberTags(existingTags);
   const book = author ? `『${bookTitle}』 (${author})` : `『${bookTitle}』`;
   const { data: raw, usage } = await requestJson({
+    model: ANALYSIS_MODEL,
     system: BOOK_SYSTEM_PROMPT,
     schema: bookAnalysisSchema(refs),
     content: `기존 태그:\n${tagList}\n\n책: ${book}\n\n다음은 이 책 한 페이지의 OCR 텍스트입니다:\n\n${ocrText}`,
@@ -372,4 +408,5 @@ module.exports = {
   CATEGORIES,
   SCORE_ITEMS,
   JUDGE_MODEL,
+  ANALYSIS_MODEL,
 };

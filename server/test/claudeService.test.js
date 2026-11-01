@@ -36,13 +36,23 @@ const output = (tags) => ({
 });
 
 // Claude API 대신 정해 둔 응답을 돌려준다. 요청 내용은 stream.mock.calls로 확인한다.
+// 분석은 대체 모델(fallbacks) 때문에 beta 경로로, 채점·관계 제안은 일반 경로로 부르므로 둘 다 바꾼다.
 function stubClaude(result) {
-  return mock.method(claudeService.client.messages, 'stream', () => ({
+  const impl = () => ({
     finalMessage: async () => {
       if (result instanceof Error) throw result;
       return result;
     },
-  }));
+  });
+  const plain = mock.method(claudeService.client.messages, 'stream', impl);
+  const beta = mock.method(claudeService.client.beta.messages, 'stream', impl);
+  return {
+    mock: {
+      get calls() {
+        return [...beta.mock.calls, ...plain.mock.calls];
+      },
+    },
+  };
 }
 
 describe('claudeService.analyzeArticleTags', () => {
@@ -55,6 +65,11 @@ describe('claudeService.analyzeArticleTags', () => {
 
     const params = stream.mock.calls[0].arguments[0];
     assert.equal(params.output_config.format.type, 'json_schema');
+    // 분석은 상위 모델 + effort 지정 + 거절 시 대체 모델
+    assert.equal(params.model, claudeService.ANALYSIS_MODEL);
+    assert.equal(params.output_config.effort, 'medium');
+    assert.equal(params.fallbacks, 'default');
+    assert.deepEqual(params.betas, ['server-side-fallback-2026-07-01']);
     assert.match(params.messages[0].content, /T1\. 아노미\nT2\. 낙인 효과/);
     assert.doesNotMatch(params.messages[0].content, /id-anomie/); // 실제 ID는 보내지 않는다
   });
@@ -177,7 +192,7 @@ describe('claudeService.analyzeArticleTags', () => {
     const result = await claudeService.analyzeArticleTags('기사', []);
 
     assert.deepEqual(result.usage, {
-      model: 'claude-haiku-4-5-20251001',
+      model: claudeService.ANALYSIS_MODEL,
       inputTokens: 1200,
       outputTokens: 300,
       cacheWriteTokens: 0,
@@ -209,6 +224,7 @@ describe('claudeService.analyzeArticleTags', () => {
 
     const params = stream.mock.calls[0].arguments[0];
     assert.equal(params.model, claudeService.JUDGE_MODEL);
+    assert.equal(params.fallbacks, undefined); // 채점은 대체 모델 없이 일반 경로
     // 기준표는 캐시 대상, 원문·결과는 매번 바뀌므로 캐시 뒤(user 메시지)에 둔다
     assert.match(params.system[0].text, /# 기준표 본문/);
     assert.deepEqual(params.system[0].cache_control, { type: 'ephemeral' });

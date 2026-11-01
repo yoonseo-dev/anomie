@@ -2,7 +2,11 @@
 // 출처: Anthropic 모델 가격표, Google Cloud Vision 가격 페이지 (doc/plan.md 3단계 OCR 선정 기록)
 
 // Claude: 100만 토큰당 달러. 캐시 쓰기는 입력 단가의 1.25배(5분 캐시), 캐시 읽기는 0.1배
+// (cacheRead가 있으면 그 단가를 쓴다: Opus 5.5는 캐시 읽기가 $0.20로 0.05배)
+// 생각(thinking) 토큰도 출력 단가로 계산된다
 const CLAUDE_USD_PER_MTOK = {
+  'claude-sonnet-5-5': { input: 2, output: 10 }, // 11-01 기준
+  'claude-opus-5-5': { input: 4, output: 20, cacheRead: 0.2 }, // 11-01 기준
   'claude-haiku-4-5-20251001': { input: 1, output: 5 },
   'claude-haiku-5-5': { input: 0.1, output: 0.5 }, // 프롬프트 10만 토큰 이하 기준
 };
@@ -20,9 +24,9 @@ const KRW_PER_USD = 1400;
 function claudeCost({ model, inputTokens, outputTokens, cacheWriteTokens = 0, cacheReadTokens = 0 }) {
   const price = CLAUDE_USD_PER_MTOK[model];
   if (!price) return null; // 모르는 모델이면 비용을 지어내지 않는다
-  const input =
-    inputTokens + cacheWriteTokens * CACHE_WRITE_MULTIPLIER + cacheReadTokens * CACHE_READ_MULTIPLIER;
-  return (input * price.input + outputTokens * price.output) / 1e6;
+  const cacheRead = cacheReadTokens * (price.cacheRead ?? price.input * CACHE_READ_MULTIPLIER);
+  const input = (inputTokens + cacheWriteTokens * CACHE_WRITE_MULTIPLIER) * price.input;
+  return (input + cacheRead + outputTokens * price.output) / 1e6;
 }
 
 module.exports = { claudeCost, VISION_USD_PER_UNIT, VISION_FREE_UNITS_PER_MONTH, KRW_PER_USD };
