@@ -353,11 +353,9 @@ adb connect 192.168.0.12:41234
 adb devices                          # 목록에 기기가 보이면 연결된 것
 flutter devices                      # Flutter가 쓸 기기 ID 확인
 
-# 3) 휴대폰의 localhost:3000을 PC 서버로 연결 (연결할 때마다 다시 실행)
-#    같은 폰이 adb devices에 두 줄(IP와 adb-...-tls-connect)로 보이면 -s로 하나를 고른다
-adb reverse tcp:3000 tcp:3000
-adb -s 192.168.0.12:41234 reverse tcp:3000 tcp:3000   # "more than one device" 오류가 날 때
-adb reverse --list                                     # tcp:3000 tcp:3000이 보이면 된 것
+# 3) 휴대폰의 localhost:3000을 PC 서버로 연결 (연결할 때마다 다시 실행, 저장소 루트에서)
+#    연결된 기기를 찾아 예전 포워딩을 지우고 다시 건 뒤, 휴대폰에서 서버 응답이 오는지까지 확인한다
+bash scripts/adb-reverse.sh           # ✓ ... 연결됨 이 나오면 된 것 (다른 포트: bash scripts/adb-reverse.sh 3100)
 
 # 4) 앱 실행 (기본 주소 10.0.2.2는 에뮬레이터 전용이라 서버 주소를 직접 준다)
 flutter run -d 192.168.0.12:41234 --dart-define=API_BASE_URL=http://localhost:3000
@@ -369,16 +367,14 @@ adb disconnect
 - `adb reverse` 대신 PC의 내부 IP를 쓸 수도 있습니다: `--dart-define=API_BASE_URL=http://<PC IP>:3000`.
   이 경우 Windows 방화벽에서 3000번 포트를 허용해야 합니다.
 - IP와 포트는 무선 디버깅을 껐다 켜면 바뀝니다. 그때는 2)부터 다시 합니다.
-- **연결이 끊겼다가 다시 이어졌다면** `adb reverse --list`에 3000이 보여도 터널이 죽어 있을 수 있습니다.
-  이때 앱은 화면만 뜨고 데이터 부분에서 로딩이 돌다가 15초 뒤 "다시 시도"가 나옵니다. 포워딩을 지우고 다시 건 뒤 앱을 재실행합니다:
-  ```bash
-  adb reverse --remove-all
-  adb -s 192.168.0.12:41234 reverse tcp:3000 tcp:3000
-  ```
+- **연결이 끊겼다가 다시 이어지면 포트가 바뀌고 포워딩도 사라집니다.** 이때 앱은 화면만 뜨고 데이터 부분에서
+  로딩이 돌다가 15초 뒤 "다시 시도"가 나옵니다. `bash scripts/adb-reverse.sh`를 다시 실행하고 "다시 시도"를 누릅니다.
+- 스크립트 없이 직접 걸 때: 같은 폰이 `adb devices`에 두 줄(IP와 `adb-...-tls-connect`)로 보이면
+  `adb reverse --remove-all` 후 `adb -s <IP:포트> reverse tcp:3000 tcp:3000`처럼 `-s`로 하나만 고릅니다.
 - `adb`가 없으면 Android SDK의 `platform-tools` 폴더를 PATH에 추가합니다.
 - 안드로이드는 암호화되지 않은 `http` 연결을 기본으로 막으므로, 디버그 빌드에서만 허용해 두었습니다
   (`android/app/src/debug/AndroidManifest.xml`). 배포 서버는 `https`를 써야 합니다.
-- "서버에 연결할 수 없어요"가 나오면: PC에서 서버가 켜져 있는지, `adb reverse --list`에 3000이 있는지,
+- "서버에 연결할 수 없어요"가 나오면: PC에서 서버가 켜져 있는지, `bash scripts/adb-reverse.sh`가 "연결됨"인지,
   `flutter run`에 `--dart-define=API_BASE_URL=http://localhost:3000`을 줬는지 확인합니다.
 
 ## 문서
