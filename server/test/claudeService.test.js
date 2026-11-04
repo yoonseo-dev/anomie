@@ -80,6 +80,8 @@ describe('claudeService.analyzeArticleTags', () => {
     const tagItem = stream.mock.calls[0].arguments[0].output_config.format.schema.properties.tags.items;
     assert.deepEqual(tagItem.properties.existingTag.anyOf[0].enum, ['T1', 'T2']);
     assert.deepEqual(tagItem.properties.similarExistingTags.items.enum, ['T1', 'T2']);
+    // 태그가 0개면 앱에서 저장할 수 없으므로 최소 1개를 스키마로 강제한다 (11-01, 정치 기사에서 빈 목록이 반복됨)
+    assert.equal(stream.mock.calls[0].arguments[0].output_config.format.schema.properties.tags.minItems, 1);
 
     mock.restoreAll();
     const empty = stubClaude(message(output([])));

@@ -33,7 +33,7 @@ const tagRules = (source) => `태그 고르는 순서:
 태그 선정 기준:
 1. 학문적 근거 — 반드시 특정 학자, 이론, 학파와 직접 연결되는 개념만 선택한다. 막연한 키워드나 일상 용어는 제외한다.
 2. 변별력 — 이 ${source}에 특별히 적합한 태그여야 한다. 어떤 글에나 붙여도 어색하지 않을 태그는 제외한다.
-3. 태그 수 제한 — 최대 3개. 억지로 채우지 말고 진짜 해당되는 것만 선택한다.
+3. 태그 수 — 1~3개. 억지로 늘리지 말고 진짜 해당되는 것만 선택하되, 학자와 바로 이어지는 개념이 없어 보여도 글에 드러난 사회 현상에 가장 가까운 학술 개념을 최소 1개는 고른다 (태그가 없으면 사용자가 스크랩을 저장할 수 없다).
 4. 태그 이름 — 학계와 교과서에서 실제로 쓰는 학술 용어를 그대로 쓴다 (보통 2~8자). 다른 글에도 그대로 붙일 수 있는 이름이어야 다른 스크랩과 연결된다.
    - 원문이 학술 개념어를 직접 쓰면(예: "염세주의", "소외") 그 용어를 우선한다.
    - 개념을 풀어 쓴 설명형 이름, 두 개념을 "A와 B"로 묶은 이름, 원문 표현을 조합해 새로 만든 이름은 쓰지 않는다. 두 개념이 모두 중요하면 태그를 둘로 나눈다.
@@ -52,7 +52,7 @@ const tagRules = (source) => `태그 고르는 순서:
 태그 각 필드 작성 기준:
 - category: 다음 중 하나 — ${CATEGORIES.join(', ')}. 어디에도 맞지 않으면 "기타".
 - description: (새 태그만) 개념의 학문적 기원(제안한 학자와 시대), 핵심 내용, 관련 이론적 맥락을 3~4문장으로 작성한다. 확실하지 않은 학자 이름이나 연도는 쓰지 않는다.
-- explanation: 이 ${source}의 구체적인 맥락에서 해당 개념이 어떻게 드러나는지 3~4문장으로 설명한다.
+- explanation: 이 ${source}의 구체적인 맥락에서 해당 개념이 어떻게 드러나는지 3~4문장으로 설명한다. ${source}의 구체적인 사실·주장·표현을 짚어 개념과 잇되, 원문에 없는 사건·배경·시대 맥락을 이 글의 내용처럼 단정하지 않는다 (학자·이론의 배경은 description에 쓴다). 이 규칙은 풀이를 쓰는 방법이지, 원문에 그 개념어가 직접 나오지 않는다고 태그를 빼라는 뜻이 아니다.
 - reason: 이 태그를 선택한 핵심 근거를 한두 문장으로 간결하게 요약한다.`;
 
 const ARTICLE_SYSTEM_PROMPT = `당신은 사회학 전문가입니다. 주어진 뉴스 기사를 분석하여 관련 학문적 개념 태그, 기사 요약, 기사 평론, 기사 분석을 지정된 JSON 형식으로 반환하세요.
@@ -112,7 +112,7 @@ const articleAnalysisSchema = (refs) => ({
     rhetoric: nullableString,
     stakeholders: nullableString,
     values: nullableString,
-    tags: { type: 'array', items: tagSchema({ refs }) },
+    tags: { type: 'array', items: tagSchema({ refs }), minItems: 1 },
   },
   required: ['summary', 'commentary', 'framing', 'rhetoric', 'stakeholders', 'values', 'tags'],
   additionalProperties: false,
@@ -122,7 +122,7 @@ const bookAnalysisSchema = (refs) => ({
   type: 'object',
   properties: {
     summary: { type: 'string' },
-    tags: { type: 'array', items: tagSchema({ refs, withExcerpt: true }) },
+    tags: { type: 'array', items: tagSchema({ refs, withExcerpt: true }), minItems: 1 },
   },
   required: ['summary', 'tags'],
   additionalProperties: false,
