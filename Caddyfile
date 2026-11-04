@@ -1,0 +1,6 @@
+# HTTPS 인증서를 자동으로 받고 갱신한다 (DOMAIN은 루트 .env, 예: anomie-dev.duckdns.org).
+# 80·443 포트가 열려 있고 도메인이 이 서버의 탄력적 IP를 가리켜야 발급된다.
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy server:3000
+}

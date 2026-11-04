@@ -87,6 +87,10 @@ flutter build web --release          # 결과물: client/build/web
   `/relations` (GET 목록[?status=], GET·PATCH /:id). 목록은 `doc/plan.md` 5장.
 - 분석 모델은 `server/src/services/claudeService.js`에, OCR 호출은 `server/src/services/ocrService.js`에 있다.
 - `sample/`(루트)은 OCR 시험용 책 사진이다. 저작물이므로 커밋하지 않는다 (`.gitignore`).
+- **배포는 `doc/deploy.md`** (EC2 한 대, `docker-compose.prod.yml` = db + server + Caddy, 도메인 `anomie-dev.duckdns.org`).
+  서버 이미지는 시작할 때 `prisma migrate deploy`를 돌린다. 배포 비밀값은 루트 `.env`(POSTGRES_PASSWORD, DOMAIN)와 `server/.env`.
+  안드로이드 실기기는 `bash scripts/run-android.sh`(포워딩 + 서버 주소 + flutter run), 연결만 바뀌면 `bash scripts/adb-reverse.sh`.
+- 실기기·배포 중 겪은 문제와 미해결 항목(가짜 클립보드, 두 번씩 분석)은 `doc/트러블슈팅_2026-10-31~11-04.md`.
 - **분석 호출마다 비용·품질이 기록된다** (`services/evalService.js`). 응답 뒤 백그라운드에서 Claude가
   `src/eval/rubric.md` 기준표로 채점하고 `server/logs/analysis-YYYY-MM.jsonl`에 한 줄 남긴다 (원문은 남기지 않음).
   채점은 `claude-haiku-5-5`(기준표 프롬프트 캐시)로 하며 호출당 약 1.5원이다.

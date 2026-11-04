@@ -14,3 +14,6 @@ Thumbs.db
 
 # 책 사진 샘플 (저작권·개인 자료, 커밋하지 않음)
 sample/
+
+# 배포용 비밀값 (docker-compose.prod.yml이 읽는다)
+.env
