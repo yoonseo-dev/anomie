@@ -1,11 +1,38 @@
 const { load } = require('cheerio');
+const httpError = require('../utils/httpError');
+
+const FETCH_TIMEOUT_MS = 15000;
+
+// 기사 사이트의 응답 상태를 사용자에게 보여 줄 오류로 바꾼다.
+// 주소 문제(404·410)는 400, 사이트가 막거나 사이트 쪽 문제는 502로 구분한다 (예전에는 모두 500 "서버 오류"였다).
+function fetchError(status) {
+  if (status === 404 || status === 410) {
+    return httpError(400, '기사를 찾을 수 없습니다. 주소가 맞는지, 삭제된 기사는 아닌지 확인해주세요.');
+  }
+  if (status === 401 || status === 403 || status === 429) {
+    return httpError(502, '이 사이트가 기사 가져오기를 막았습니다. 다른 언론사 주소로 시도해주세요.');
+  }
+  return httpError(502, `기사 사이트에서 페이지를 가져오지 못했습니다 (${status}). 잠시 후 다시 시도해주세요.`);
+}
 
 // URL에서 HTML을 가져와 뉴스 기사 정보를 추출
 async function crawlArticle(url) {
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AnoMieBot/1.0)' },
-  });
-  if (!res.ok) throw new Error(`페이지를 가져올 수 없습니다: ${res.status}`);
+  let res;
+  try {
+    res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AnoMieBot/1.0)' },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+  } catch (err) {
+    // 주소의 서버가 없거나 응답이 없다 (DNS 실패, 연결 거부, 시간 초과)
+    console.error(`[크롤링] 연결 실패 ${url}: ${err.cause?.code ?? err.name}`);
+    throw httpError(502, '기사 사이트에 연결하지 못했습니다. 주소를 확인하거나 잠시 후 다시 시도해주세요.');
+  }
+  if (!res.ok) {
+    // 어떤 주소에서 막혔는지 알아야 원인을 볼 수 있으므로 주소를 남긴다 (11-01, 주소 없이 404만 남아 원인을 못 찾음)
+    console.error(`[크롤링] ${res.status} ${url}`);
+    throw fetchError(res.status);
+  }
 
   const html = await res.text();
   const $ = load(html);
