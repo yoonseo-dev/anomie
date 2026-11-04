@@ -395,3 +395,5 @@ adb disconnect
 - [`doc/plan.md`](doc/plan.md): 최신 기획서이자 진행 상황 (결정·미결 사항의 기준)
 - [`doc/anomie_erd.md`](doc/anomie_erd.md): ERD와 스키마 밖 규칙
 - [`doc/작업기록_2026-10-29.md`](doc/작업기록_2026-10-29.md): 10-29 작업 기록
+- [`doc/deploy.md`](doc/deploy.md): EC2 배포 (Docker Compose + Caddy HTTPS, 백업)
+- [`doc/트러블슈팅_2026-10-31~11-04.md`](doc/트러블슈팅_2026-10-31~11-04.md): 실기기 테스트·배포 준비 중 생긴 문제와 해결, 미해결 항목
