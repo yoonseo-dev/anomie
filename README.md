@@ -339,7 +339,20 @@ flutter run          # 웹으로 띄우면 서버 .env에 CORS_ORIGINS 필요
 flutter test --concurrency=1
 ```
 
-### 안드로이드 실기기 (무선 디버깅)
+### 안드로이드 실기기 (USB·무선 디버깅)
+
+휴대폰을 USB나 무선 디버깅으로 연결한 뒤(`adb devices`에 보이면 됨) 저장소 루트에서 실행합니다.
+포워딩(`adb-reverse.sh`)을 먼저 걸고, 서버 주소(`--dart-define=API_BASE_URL`)를 넣어 `flutter run`을 띄웁니다.
+
+```bash
+bash scripts/run-android.sh               # 서버 3000번. USB 연결을 먼저 고른다
+PORT=3100 bash scripts/run-android.sh     # 다른 포트의 서버
+bash scripts/run-android.sh --release     # 뒤의 인자는 flutter run에 그대로 넘긴다
+```
+
+앱을 띄운 채 연결만 바뀌었다면(케이블 재연결, 무선 재연결) `bash scripts/adb-reverse.sh`만 다시 실행하고 "다시 시도"를 누릅니다.
+
+#### 무선 디버깅 처음 연결
 
 PC와 휴대폰이 같은 Wi-Fi에 있어야 합니다. 휴대폰은 Android 11 이상이어야 하고,
 **설정 → 개발자 옵션 → 무선 디버깅**을 켭니다.
