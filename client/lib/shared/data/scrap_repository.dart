@@ -234,8 +234,8 @@ class ApiScrapRepository implements ScrapRepository {
         for (final item in res.data ?? const [])
           fromJson(item as Map<String, dynamic>),
       ];
-    } catch (e) {
-      throw ApiException.from(e);
+    } catch (e, s) {
+      throw ApiException.from(e, s);
     }
   }
 
@@ -281,8 +281,8 @@ class ApiScrapRepository implements ScrapRepository {
         },
       );
       return isBook ? bookFromJson(res.data!) : articleFromJson(res.data!);
-    } catch (e) {
-      throw ApiException.from(e);
+    } catch (e, s) {
+      throw ApiException.from(e, s);
     }
   }
 }

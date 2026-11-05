@@ -83,8 +83,8 @@ class ApiConceptRepository implements ConceptRepository {
             scrapFromJson(s, concept.name),
         ],
       );
-    } catch (e) {
-      throw ApiException.from(e);
+    } catch (e, s) {
+      throw ApiException.from(e, s);
     }
   }
 
@@ -95,8 +95,8 @@ class ApiConceptRepository implements ConceptRepository {
         '/concepts/$conceptId',
         data: {'description': text},
       );
-    } catch (e) {
-      throw ApiException.from(e);
+    } catch (e, s) {
+      throw ApiException.from(e, s);
     }
   }
 

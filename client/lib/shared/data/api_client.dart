@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
@@ -10,16 +11,17 @@ import '../../features/auth/auth_controller.dart';
 class ApiException implements Exception {
   const ApiException(this.message, {this.statusCode});
 
-  factory ApiException.from(Object error) {
+  factory ApiException.from(Object error, [StackTrace? stack]) {
     if (error is ApiException) return error;
+    // 원인을 알 수 있게 실제 오류를 기기 로그(logcat의 flutter 태그)에 남긴다. 배포용 빌드에서도 찍힌다.
+    debugPrint('[API] 실패: $error');
+    if (stack != null) debugPrint('$stack');
     if (error is DioException) {
+      final status = error.response?.statusCode;
       final data = error.response?.data;
       final serverMessage = data is Map ? data['message'] : null;
       if (serverMessage is String && serverMessage.isNotEmpty) {
-        return ApiException(
-          serverMessage,
-          statusCode: error.response?.statusCode,
-        );
+        return ApiException(serverMessage, statusCode: status);
       }
       return switch (error.type) {
         DioExceptionType.connectionError ||
@@ -28,13 +30,14 @@ class ApiException implements Exception {
         ),
         DioExceptionType.receiveTimeout || DioExceptionType.sendTimeout =>
           const ApiException('응답이 늦어지고 있어요. 잠시 뒤 다시 시도해 주세요'),
+        // 분류하지 못한 실패는 상태 코드나 오류 종류를 덧붙여 화면만 보고도 원인을 좁힐 수 있게 한다 (11-05)
         _ => ApiException(
-          '요청을 처리하지 못했어요',
-          statusCode: error.response?.statusCode,
+          '요청을 처리하지 못했어요 (${status != null ? 'HTTP $status' : error.type.name})',
+          statusCode: status,
         ),
       };
     }
-    return const ApiException('요청을 처리하지 못했어요');
+    return ApiException('요청을 처리하지 못했어요 (${error.runtimeType})');
   }
 
   final String message;

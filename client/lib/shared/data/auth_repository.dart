@@ -34,8 +34,8 @@ class ApiAuthRepository implements AuthRepository {
     try {
       final res = await _dio.post<Map<String, dynamic>>(path, data: body);
       return res.data ?? const {};
-    } catch (e) {
-      throw ApiException.from(e);
+    } catch (e, s) {
+      throw ApiException.from(e, s);
     }
   }
 

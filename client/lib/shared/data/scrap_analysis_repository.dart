@@ -147,8 +147,8 @@ class ApiScrapAnalysisRepository implements ScrapAnalysisRepository {
         options: analyzeOptions,
       );
       return articleFromJson(res.data!);
-    } catch (e) {
-      throw ApiException.from(e);
+    } catch (e, s) {
+      throw ApiException.from(e, s);
     }
   }
 
@@ -190,8 +190,8 @@ class ApiScrapAnalysisRepository implements ScrapAnalysisRepository {
         options: analyzeOptions,
       );
       return bookFromJson(res.data!);
-    } catch (e) {
-      throw ApiException.from(e);
+    } catch (e, s) {
+      throw ApiException.from(e, s);
     }
   }
 }

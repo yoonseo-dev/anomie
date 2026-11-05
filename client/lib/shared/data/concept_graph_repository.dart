@@ -285,8 +285,8 @@ class ApiConceptGraphRepository implements ConceptGraphRepository {
   Future<T?> _call<T>(Future<Response<T>> Function() request) async {
     try {
       return (await request()).data;
-    } catch (e) {
-      throw ApiException.from(e);
+    } catch (e, s) {
+      throw ApiException.from(e, s);
     }
   }
 

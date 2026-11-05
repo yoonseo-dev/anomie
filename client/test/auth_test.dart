@@ -324,6 +324,39 @@ void main() {
         contains('연결할 수 없어요'),
       );
     });
+
+    // 11-05: 배포 빌드에서 "요청을 처리하지 못했어요"만 떠서 원인을 좁힐 수 없었다
+    test('분류하지 못한 실패는 상태 코드나 오류 종류를 덧붙인다', () {
+      // 문구가 없는 응답 (프록시가 돌려준 빈 502 등)
+      expect(
+        ApiException.from(
+          DioException(
+            requestOptions: RequestOptions(path: '/x'),
+            response: Response(
+              requestOptions: RequestOptions(path: '/x'),
+              statusCode: 502,
+            ),
+            type: DioExceptionType.badResponse,
+          ),
+        ).message,
+        '요청을 처리하지 못했어요 (HTTP 502)',
+      );
+      // 응답 없이 실패 (TLS 오류 등)
+      expect(
+        ApiException.from(
+          DioException(
+            requestOptions: RequestOptions(path: '/x'),
+            type: DioExceptionType.unknown,
+          ),
+        ).message,
+        '요청을 처리하지 못했어요 (unknown)',
+      );
+      // 응답을 해석하다 난 오류 등 Dio 밖의 실패
+      expect(
+        ApiException.from(TypeError()).message,
+        '요청을 처리하지 못했어요 (TypeError)',
+      );
+    });
   });
 }
 
