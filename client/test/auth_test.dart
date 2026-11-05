@@ -275,6 +275,29 @@ void main() {
       expect(seenAuth, hasLength(2));
     });
 
+    // 11-05 배포 앱: 갱신 요청이 아예 나가지 않은 채 "요청을 처리하지 못했어요"만 반복됐다
+    test('갱신이 예상하지 못한 오류로 실패하면 갇히지 않고 로그아웃된다', () async {
+      final container = containerWith([401], _BrokenRefreshRepository());
+      addTearDown(container.dispose);
+      await container.read(authControllerProvider.future);
+
+      final call = container.read(apiClientProvider).get<dynamic>('/concepts');
+
+      // 원래의 401(서버 문구 포함)이 그대로 오고, 로그인 상태는 풀린다 → 라우터가 로그인 화면으로
+      await expectLater(
+        call,
+        throwsA(
+          isA<DioException>().having(
+            (e) => e.response?.statusCode,
+            'status',
+            401,
+          ),
+        ),
+      );
+      expect(container.read(authControllerProvider).value, isNull);
+      expect(seenAuth, hasLength(1)); // 다시 보내지 않았다
+    });
+
     test('갱신도 실패하면 401을 그대로 돌려주고 로그아웃된다', () async {
       final container = containerWith([401], FakeAuthRepository());
       addTearDown(container.dispose);
@@ -383,4 +406,12 @@ class _ScriptedAdapter implements HttpClientAdapter {
 
   @override
   void close({bool force = false}) {}
+}
+
+/// 갱신하다 ApiException이 아닌 오류를 던진다 (원인을 모르는 내부 오류 흉내).
+class _BrokenRefreshRepository extends FakeAuthRepository {
+  @override
+  Future<({String accessToken, String refreshToken})> refresh(
+    String refreshToken,
+  ) async => throw StateError('예상하지 못한 내부 오류');
 }

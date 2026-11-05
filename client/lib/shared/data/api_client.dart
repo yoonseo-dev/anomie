@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
 import '../../features/auth/auth_controller.dart';
+import '../models/session.dart';
 
 /// 서버 오류를 화면에 보여 줄 문구로 정리한 것. 서버는 `{ message }`로 답한다.
 class ApiException implements Exception {
@@ -99,7 +100,19 @@ class AuthInterceptor extends Interceptor {
     }
 
     // Access 토큰이 만료됐다. 여러 요청이 동시에 401을 받아도 갱신은 한 번만 한다.
-    final session = await _auth.refreshTokens();
+    final Session? session;
+    try {
+      session = await _auth.refreshTokens();
+    } catch (e, s) {
+      // 예상하지 못한 이유로 갱신하지 못했다. 그대로 두면 로그인된 것처럼 보이는데 모든 요청이 실패하는
+      // 상태에 갇힌다 (11-05 배포 앱: 갱신 요청이 아예 나가지 않음, doc/troubleshooting.md 23번).
+      // 원인을 기기 로그에 남기고 로그아웃해서 다시 로그인하게 한다.
+      debugPrint('[API] 토큰 갱신 중 예상하지 못한 오류: $e\n$s');
+      try {
+        await _auth.logout();
+      } catch (_) {}
+      return handler.next(err);
+    }
     if (session == null) {
       // 로그인이 풀렸다 → 라우터가 로그인 화면으로 보낸다
       return handler.next(err);
