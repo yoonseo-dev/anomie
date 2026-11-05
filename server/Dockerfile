@@ -3,6 +3,9 @@ FROM node:22-slim
 
 WORKDIR /app
 
+# Prisma가 OpenSSL 버전을 찾지 못하면 경고를 낸다 (slim 이미지에는 없다)
+RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
+
 # 의존성 먼저 (코드만 바뀌면 이 층은 다시 받지 않는다). prisma CLI도 dependencies라 migrate deploy를 쓸 수 있다.
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev

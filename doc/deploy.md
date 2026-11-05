@@ -61,6 +61,18 @@ curl https://anomie-dev.duckdns.org/concepts                   # {"message":"인
 
 코드를 바꾼 뒤: `git pull` → 같은 `up -d --build` (마이그레이션은 서버가 시작할 때 적용한다).
 
+## 로그·기록 보기
+
+```bash
+C="docker compose -f docker-compose.prod.yml"
+$C logs --tail 100 server                 # 서버 (분석·OCR·오류)
+$C logs caddy | grep handled | tail -20   # 들어온 요청 (경로·상태 코드·걸린 시간)
+$C exec server npm run eval:report        # 분석 비용·채점 요약 (기록은 server_logs 볼륨)
+$C exec server npm run credit             # Claude 크레딧 잔액(추정)
+```
+
+앱에서 실패했는데 server 로그가 비어 있으면, caddy 로그에서 요청이 들어왔는지부터 본다.
+
 인증서가 안 받아지면 `docker compose -f docker-compose.prod.yml logs caddy`를 본다.
 대부분 DuckDNS가 다른 IP를 가리키거나 80·443이 막힌 경우다.
 

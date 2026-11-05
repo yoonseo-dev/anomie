@@ -3,4 +3,12 @@
 {$DOMAIN} {
 	encode gzip
 	reverse_proxy server:3000
+
+	# 모든 요청을 한 줄씩 남긴다 (경로·상태 코드·걸린 시간). 앱에서 실패했는데 서버 로그가 비어 있을 때,
+	# 요청이 여기까지 왔는지부터 볼 수 있다 (11-05). Authorization 같은 인증 헤더 값은 Caddy가 기본으로 가린다.
+	# 보기: docker compose -f docker-compose.prod.yml logs caddy | grep handled
+	log {
+		output stdout
+		format console
+	}
 }

@@ -33,7 +33,10 @@ services:
       # Caddy 한 단계 뒤에 있으므로 호출 제한이 실제 사용자 IP로 세어지게 한다
       TRUST_PROXY: "1"
     volumes:
-      - ./server/logs:/app/logs
+      # 비용·채점 기록. 이름 있는 볼륨은 이미지의 /app/logs 소유자(node)를 그대로 따른다.
+      # (11-05: ./server/logs를 직접 붙였더니 root 소유로 만들어져 EACCES로 기록이 안 남았다)
+      # 보기: docker compose -f docker-compose.prod.yml exec server npm run eval:report
+      - server_logs:/app/logs
     depends_on:
       db:
         condition: service_healthy
@@ -56,5 +59,6 @@ services:
 
 volumes:
   pgdata:
+  server_logs:
   caddy_data:
   caddy_config:
